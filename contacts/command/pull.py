@@ -5,7 +5,7 @@ import time
 from typing import cast
 
 from contacts import model
-from contacts.dao import icloud_dao, disk_dao
+from contacts.dao import disk_dao, icloud_dao
 from contacts.utils import (
     dataclasses_utils,
     input_utils,

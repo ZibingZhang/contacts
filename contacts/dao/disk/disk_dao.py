@@ -51,7 +51,9 @@ class DiskDao:
             + 1
         )
         for contact in contacts:
-            LOG.info(f"Writing new contact {contact_utils.build_name_str(contact)} to disk")
+            LOG.info(
+                f"Writing new contact {contact_utils.build_name_str(contact)} to disk"
+            )
 
             contact.id = next_contact_id
             contact.mtime = time.time()
@@ -63,7 +65,9 @@ class DiskDao:
     @staticmethod
     def update_contacts(contacts: list[model.DiskContact]) -> None:
         for contact in contacts:
-            LOG.info(f"Writing updated contact {contact_utils.build_name_str(contact)} to disk")
+            LOG.info(
+                f"Writing updated contact {contact_utils.build_name_str(contact)} to disk"
+            )
 
             file_io_utils.write_contact_as_json_object(
                 os.path.join(DiskDao.DIRECTORY, f"{contact.id}.json"), contact

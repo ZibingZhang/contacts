@@ -1,11 +1,12 @@
 """Command to list all tags."""
 from __future__ import annotations
 
-from contacts.utils import command_utils, contact_utils
+from contacts.dao import disk_dao
+from contacts.utils import contact_utils
 
 
 def run(tags: list[str]) -> None:
-    contacts = command_utils.read_contacts_from_disk()
+    contacts = disk_dao.read_contacts()
 
     if not tags:
         all_tags = contact_utils.extract_tags(contacts)

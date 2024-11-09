@@ -44,7 +44,7 @@ def _run_command(cl_args: argparse.Namespace) -> None:
                     raise RuntimeError("Missing subcommand")
 
         case command.Command.VALIDATE:
-            command.validate.run()
+            command.validate.run(should_fix=cl_args.fix)
 
         case _:
             raise NotImplementedError("Unimplemented command")

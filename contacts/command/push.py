@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import cast
 
 from contacts import command, model
-from contacts.dao import icloud_dao, disk_dao
+from contacts.dao import disk_dao, icloud_dao
 from contacts.logger import LOG
 from contacts.utils import (
     dataclasses_utils,
@@ -79,7 +79,9 @@ def run(*, force: bool, write: bool) -> None:
     if write:
         icloud_dao.update_contacts(updated_contacts)
     else:
-        LOG.info(f"Would have written {len(updated_contacts)} updated contacts to iCloud")
+        LOG.info(
+            f"Would have written {len(updated_contacts)} updated contacts to iCloud"
+        )
 
     if write and (len(new_contacts) > 0 or len(updated_contacts) > 0):
         LOG.info("Pulling contacts to sync etags")

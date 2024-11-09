@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import configparser
 import os.path
+from typing import Sequence
 
 import contacts
 from contacts.common import constant
@@ -109,7 +110,7 @@ class ICloudDao:
 
         return contacts, groups
 
-    def create_contacts(self, contacts: list[contacts.model.Contact]) -> None:
+    def create_contacts(self, contacts: Sequence[contacts.model.Contact]) -> None:
         if len(contacts) == 0:
             return
 

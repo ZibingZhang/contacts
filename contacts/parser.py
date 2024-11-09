@@ -21,10 +21,7 @@ def _create_parser() -> argparse.ArgumentParser:
         help="commands",
     )
 
-    _build_add_command_parser(command_parser)
-    _build_dump_command_parser(command_parser)
     _build_families_command_parser(command_parser)
-    _build_load_command_parser(command_parser)
     _build_pull_command_parser(command_parser)
     _build_push_command_parser(command_parser)
     _build_tag_command_parser(command_parser)
@@ -138,8 +135,14 @@ def _build_tag_command_parser(command_parser: argparse._SubParsersAction) -> Non
 
 
 def _build_validate_command_parser(command_parser: argparse._SubParsersAction) -> None:
-    command_parser.add_parser(
+    validate_parser = command_parser.add_parser(
         command.Command.VALIDATE.value,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         help="validate contacts",
+    )
+    validate_parser.add_argument(
+        "--fix",
+        action="store_true",
+        default=False,
+        help="fix the validation errors",
     )
