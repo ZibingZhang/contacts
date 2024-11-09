@@ -1,7 +1,7 @@
 from contacts.dao.icloud.icloud_dao import ICloudDao
-from contacts.dao.local.local_dao import LocalDao
+from contacts.dao.disk.disk_dao import DiskDao
 
-__all__ = ["icloud_dao", "local_dao"]
+__all__ = ["icloud_dao", "disk_dao"]
 
 icloud_dao = ICloudDao()
-local_dao = LocalDao()
+disk_dao = DiskDao()

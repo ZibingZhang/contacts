@@ -7,6 +7,7 @@ import os.path
 import contacts
 from contacts.common import constant
 from contacts.dao.icloud import manager, model, transformer
+from contacts.logger import LOG
 from contacts.utils import file_io_utils
 
 _ALERT_UUIDS = [
@@ -47,6 +48,8 @@ class ICloudDao:
         *,
         cached: bool = False,
     ) -> tuple[list[contacts.model.Contact], list[contacts.model.Group]]:
+        LOG.info("Reading contacts and groups from iCloud")
+
         if cached:
             if not os.path.isdir(constant.CACHE_DIRECTORY):
                 raise ValueError(
@@ -101,21 +104,38 @@ class ICloudDao:
             for icloud_group in icloud_groups
         ]
 
+        LOG.info(f"Read {len(contacts)} contacts")
+        LOG.info(f"Read {len(groups)} groups")
+
         return contacts, groups
 
     def create_contacts(self, contacts: list[contacts.model.Contact]) -> None:
+        if len(contacts) == 0:
+            return
+
+        LOG.info(f"Writing {len(contacts)} new contacts to iCloud")
+
         contact_manager = self._get_contact_manager()
         icloud_contacts = [
             transformer.contact_to_icloud_contact(contact) for contact in contacts
         ]
         contact_manager.create_contacts(icloud_contacts)
 
+        LOG.info(f"Wrote {len(contacts)} new contacts to iCloud")
+
     def update_contacts(self, contacts: list[contacts.model.Contact]) -> None:
+        if len(contacts) == 0:
+            return
+
+        LOG.info(f"Writing {len(contacts)} updated contacts to iCloud")
+
         contact_manager = self._get_contact_manager()
         icloud_contacts = [
             transformer.contact_to_icloud_contact(contact) for contact in contacts
         ]
         contact_manager.update_contacts(icloud_contacts)
+
+        LOG.info(f"Wrote {len(contacts)} updated contacts to iCloud")
 
     def create_group(self, group: contacts.model.Group) -> None:
         contact_manager = self._get_contact_manager()

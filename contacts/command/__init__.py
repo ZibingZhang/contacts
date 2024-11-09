@@ -2,10 +2,7 @@
 import enum
 
 from contacts.command import (
-    add,
-    dump,
     families,
-    load,
     pull,
     push,
     sync_groups,

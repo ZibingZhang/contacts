@@ -4,8 +4,9 @@ from __future__ import annotations
 from typing import cast
 
 from contacts import command, model
+from contacts.dao import icloud_dao, disk_dao
+from contacts.logger import LOG
 from contacts.utils import (
-    command_utils,
     dataclasses_utils,
     input_utils,
     json_utils,
@@ -14,8 +15,8 @@ from contacts.utils import (
 
 
 def run(*, force: bool, write: bool) -> None:
-    disk_contacts = command_utils.read_contacts_from_disk()
-    icloud_contacts = command_utils.read_contacts_from_icloud(cached=False)
+    disk_contacts = disk_dao.read_contacts()
+    icloud_contacts, _ = icloud_dao.read_contacts_and_groups(cached=False)
 
     icloud_id_to_disk_contact_map: dict[str, model.DiskContact] = {
         contact.icloud.uuid: contact
@@ -33,6 +34,7 @@ def run(*, force: bool, write: bool) -> None:
     new_contacts = []
     for icloud_id in disk_contact_ids - icloud_contact_ids:
         new_contact = icloud_id_to_disk_contact_map[icloud_id]
+        _remove_unsynced_fields(new_contact)
 
         print(pretty_print_utils.bordered(json_utils.dumps(new_contact.to_dict())))
 
@@ -41,9 +43,9 @@ def run(*, force: bool, write: bool) -> None:
             new_contacts.append(new_contact)
 
     if write:
-        command_utils.write_new_contacts_to_icloud(new_contacts)
+        icloud_dao.create_contacts(new_contacts)
     else:
-        print(f"Would have created {len(new_contacts)} contact(s)")
+        LOG.info(f"Would have written {len(new_contacts)} new contacts to iCloud")
 
     updated_contacts = []
     for icloud_id in disk_contact_ids & icloud_contact_ids:
@@ -75,12 +77,12 @@ def run(*, force: bool, write: bool) -> None:
                 updated_contacts.append(disk_contact)
 
     if write:
-        command_utils.write_updated_contacts_to_icloud(updated_contacts)
+        icloud_dao.update_contacts(updated_contacts)
     else:
-        print(f"Would have updated {len(updated_contacts)} contact(s)")
+        LOG.info(f"Would have written {len(updated_contacts)} updated contacts to iCloud")
 
     if write and (len(new_contacts) > 0 or len(updated_contacts) > 0):
-        print("Pulling contact(s) to sync etag(s)...")
+        LOG.info("Pulling contacts to sync etags")
         command.pull.run(cached=False)
 
 

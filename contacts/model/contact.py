@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Any
+from typing import Any, cast
 
 import dataclasses_json
 
@@ -176,4 +176,3 @@ class Contact(dataclasses_utils.DataClassJsonMixin):
 
 class DiskContact(Contact):
     id: int
-    mtime: float

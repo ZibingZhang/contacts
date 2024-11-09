@@ -5,26 +5,19 @@ import argparse
 from contacts import command, parser
 from contacts.common import error
 from contacts.dao import icloud_dao
+from contacts.logger import LOG
 
 
 def _run_command(cl_args: argparse.Namespace) -> None:
     import logging
-    import sys
 
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+    from contacts.logger import LOG
+
+    LOG.setLevel(level=logging.INFO)
 
     match cl_args.command:
-        case command.Command.ADD:
-            command.add.run()
-
-        case command.Command.DUMP:
-            command.dump.run()
-
         case command.Command.FAMILIES:
             command.families.run()
-
-        case command.Command.LOAD:
-            command.load.run(name=cl_args.name)
 
         case command.Command.PULL:
             if not cl_args.cached:
@@ -63,6 +56,6 @@ if __name__ == "__main__":
     try:
         _run_command(cl_args)
     except error.CommandQuitError:
-        print("Exiting")
+        LOG.info("Exiting")
 
-    print("Done")
+    LOG.info("Done")

@@ -5,6 +5,7 @@ CACHE_DIRECTORY = "cache"
 DATA_DIRECTORY = "data"
 CONFIG_FILE = "config.ini"
 
+CONTACT_FILES_DIRECTORY = "contacts"
 CONTACTS_FILE_NAME = "contacts.json"
 LOADED_CONTACT_FILE_NAME = "loaded-contact.json"
 NEW_CONTACTS_FILE_NAME = "new-contacts.json"
