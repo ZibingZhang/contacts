@@ -1,4 +1,5 @@
 """General iCloud api wrapper."""
+
 from __future__ import annotations
 
 import base64
@@ -28,12 +29,20 @@ LOG = logging.getLogger(__name__)
 HEADER_DATA = {
     "X-Apple-ID-Account-Country": "account_country",
     "X-Apple-ID-Session-Id": "session_id",
+    "X-Apple-Auth-Attributes": "auth_attributes",
     "X-Apple-Session-Token": "session_token",
     "X-Apple-TwoSV-Trust-Token": "trust_token",
+    "X-Apple-TwoSV-Trust-Eligible": "trust_eligible",
+    "X-Apple-OAuth-Grant-Code": "grant_code",
     "X-Apple-I-Rscd": "apple_rscd",
     "X-Apple-I-Ercd": "apple_ercd",
     "scnt": "scnt",
 }
+
+_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3.1 Safari/605.1.15"
+)
 
 
 class ICloudSession(requests.Session):
@@ -134,8 +143,25 @@ class ICloudSession(requests.Session):
         request = self.get("%s/listDevices" % self.SETUP_ENDPOINT, params=self.params)
         return request.json().get("devices")
 
+    def _request_2fa_code(self) -> None:
+        """Actively push a 2FA notification to trusted devices.
+
+        Apple does not automatically push a code for non-browser (API) sessions
+        after SRP. This method triggers the push explicitly.
+        """
+        headers = self._get_auth_headers({"Accept": "application/json"})
+        try:
+            self.get(
+                "%s/verify/trusteddevice" % self.AUTH_ENDPOINT,
+                headers=headers,
+            )
+            LOG.debug("Requested 2FA code via trusted device push")
+        except Exception:
+            LOG.debug("Could not request 2FA device push")
+
     def login(self) -> None:
         if self.requires_2fa:
+            self._request_2fa_code()
             LOG.info("Two-factor authentication required.")
             code = input(
                 "Enter the code you received of one of your approved devices: "
@@ -222,11 +248,24 @@ class ICloudSession(requests.Session):
 
             headers = self._get_auth_headers()
 
-            if scnt := self.session_data.get("scnt"):
-                headers["scnt"] = scnt
-
-            if session_id := self.session_data.get("session_id"):
-                headers["X-Apple-ID-Session-Id"] = session_id
+            try:
+                self.get(
+                    "%s/authorize/signin" % self.AUTH_ENDPOINT,
+                    params={
+                        "frame_id": self.client_id,
+                        "skVersion": "7",
+                        "iframeid": self.client_id,
+                        "client_id": "d39ba9916b7251055b22c7f910e2ea796ee65e98b2ddecea8f5dde8d9d1a815d",
+                        "response_type": "code",
+                        "redirect_uri": self.HOME_ENDPOINT,
+                        "response_mode": "web_message",
+                        "state": self.client_id,
+                        "authVersion": "latest",
+                    },
+                )
+                headers = self._get_auth_headers()
+            except Exception:
+                LOG.debug("authorize/signin pre-step failed; continuing with SRP")
 
             srp_password = _SrpPassword(self.user.password)
             srp.rfc5054_enable()
@@ -258,8 +297,9 @@ class ICloudSession(requests.Session):
             b = base64.b64decode(body["b"])
             c = body["c"]
             iterations = body["iteration"]
+            protocol = body.get("protocol", "s2k")
             key_length = 32
-            srp_password.set_encrypt_info(salt, iterations, key_length)
+            srp_password.set_encrypt_info(salt, iterations, key_length, protocol)
             m1 = usr.process_challenge(salt, b)
             m2 = usr.H_AMK
             data = {
@@ -349,19 +389,36 @@ class ICloudSession(requests.Session):
         headers = {
             "Accept": "application/json, text/javascript",
             "Content-Type": "application/json",
+            "User-Agent": _USER_AGENT,
+            "X-Apple-FD-Client-Info": json.dumps(
+                {"U": _USER_AGENT, "L": "en-US", "Z": "GMT+00:00", "V": "1.1", "F": ""},
+                separators=(",", ":"),
+            ),
             "X-Apple-OAuth-Client-Id": (
                 "d39ba9916b7251055b22c7f910e2ea796ee65e98b2ddecea8f5dde8d9d1a815d"
             ),
             "X-Apple-OAuth-Client-Type": "firstPartyAuth",
-            "X-Apple-OAuth-Redirect-URI": "https://www.icloud.com",
+            "X-Apple-OAuth-Redirect-URI": self.HOME_ENDPOINT,
             "X-Apple-OAuth-Require-Grant-Code": "true",
             "X-Apple-OAuth-Response-Mode": "web_message",
             "X-Apple-OAuth-Response-Type": "code",
             "X-Apple-OAuth-State": self.client_id,
+            "X-Apple-Frame-Id": self.client_id,
             "X-Apple-Widget-Key": (
                 "d39ba9916b7251055b22c7f910e2ea796ee65e98b2ddecea8f5dde8d9d1a815d"
             ),
+            "Referer": "https://idmsa.apple.com",
         }
+
+        if scnt := self.session_data.get("scnt"):
+            headers["scnt"] = scnt
+
+        if session_id := self.session_data.get("session_id"):
+            headers["X-Apple-ID-Session-Id"] = session_id
+
+        if auth_attributes := self.session_data.get("auth_attributes"):
+            headers["X-Apple-Auth-Attributes"] = auth_attributes
+
         if overrides:
             headers.update(overrides)
         return headers
@@ -403,12 +460,6 @@ class ICloudSession(requests.Session):
 
         headers = self._get_auth_headers({"Accept": "application/json"})
 
-        if scnt := self.session_data.get("scnt"):
-            headers["scnt"] = scnt
-
-        if session_id := self.session_data.get("session_id"):
-            headers["X-Apple-ID-Session-Id"] = session_id
-
         try:
             self.post(
                 "%s/verify/trusteddevice/securitycode" % self.AUTH_ENDPOINT,
@@ -430,12 +481,6 @@ class ICloudSession(requests.Session):
     def _trust_session(self) -> bool:
         """Request session trust to avoid user log in going forward."""
         headers = self._get_auth_headers()
-
-        if scnt := self.session_data.get("scnt"):
-            headers["scnt"] = scnt
-
-        if session_id := self.session_data.get("session_id"):
-            headers["X-Apple-ID-Session-Id"] = session_id
 
         try:
             self.get(
@@ -619,20 +664,27 @@ class _User:
 
 class _SrpPassword:
     def __init__(self, password: str):
-        self.password = password
+        self._password_hash = hashlib.sha256(password.encode("utf-8")).digest()
         self.salt = b""
         self.iterations = 0
         self.key_length = 0
+        self.protocol = "s2k"
 
-    def set_encrypt_info(self, salt: bytes, iterations: int, key_length: int):
+    def set_encrypt_info(
+        self, salt: bytes, iterations: int, key_length: int, protocol: str = "s2k"
+    ):
         self.salt = salt
         self.iterations = iterations
         self.key_length = key_length
+        self.protocol = protocol
 
     def encode(self):
-        password_hash = hashlib.sha256(self.password.encode("utf-8")).digest()
+        if self.protocol == "s2k_fo":
+            password_digest = self._password_hash.hex().encode()
+        else:
+            password_digest = self._password_hash
         return hashlib.pbkdf2_hmac(
-            "sha256", password_hash, self.salt, self.iterations, self.key_length
+            "sha256", password_digest, self.salt, self.iterations, self.key_length
         )
 
 
