@@ -1,4 +1,5 @@
 """Various enumerations."""
+
 import enum
 import functools
 
@@ -15,9 +16,12 @@ class Country(enum.StrEnum):
 
 class CountryCode(enum.IntEnum):
     NANP = 1
+    PORTUGAL = 351
     IRELAND = 353
+    CROATIA = 385
     UNITED_KINGDOM = 44
     BELGIUM = 32
+    SWEDEN = 46
     BRAZIL = 55
     CHILE = 56
     MALAYSIA = 60
@@ -108,6 +112,7 @@ class UniversityName(enum.StrEnum):
     COLGATE_UNIVERSITY = "Colgate University"
     COLLEGE_OF_THE_HOLY_CROSS = "College of the Holy Cross"
     COLUMBIA_UNIVERSITY = "Columbia University"
+    CONNECTICUT_COLLEGE = "Connecticut College"
     CORNELL_UNIVERSITY = "Cornell University"
     DANMARKS_TEKNISKE_UNIVERSITET = "Danmarks Tekniske Universitet"
     DARTMOUTH_COLLEGE = "Dartmouth College"
@@ -137,8 +142,10 @@ class UniversityName(enum.StrEnum):
     MANHATTAN_COLLEGE = "Manhattan College"
     MASSACHUSETTS_COLLEGE_OF_ART_AND_DESIGN = "Massachusetts College of Art and Design"
     MASSACHUSETTS_INSTITUTE_OF_TECHNOLOGY = "Massachusetts Institute of Technology"
+    MAYNOOTH_UNIVERSITY = "Maynooth University"
     MCGILL_UNIVERSITY = "McGill University"
     MIDDLEBURY_COLLEGE = "Middlebury College"
+    MITCHELL_COLLEGE = "Mitchell College"
     NEW_YORK_UNIVERSITY = "New York University"
     NORTH_CAROLINA_STATE_UNIVERSITY = "North Carolina State University"
     NORTHEASTERN_UNIVERSITY = "Northeastern University"
@@ -161,6 +168,8 @@ class UniversityName(enum.StrEnum):
     SAN_DIEGO_STATE_UNIVERSITY = "San Diego State University"
     SETON_HALL_UNIVERSITY = "Seton Hall University"
     SKIDMORE_COLLEGE = "Skidmore College"
+    SMITH_COLLEGE = "Smith College"
+    SOUTHERN_CONNECTICUT_STATE_UNIVERSITY = "Southern Connecticut State University"
     SOUTHERN_METHODIST_UNIVERSITY = "Southern Methodist University"
     ST_LAWRENCE_UNIVERSITY = "St. Lawrence University"
     STANFORD_UNIVERSITY = "Stanford University"
@@ -186,6 +195,7 @@ class UniversityName(enum.StrEnum):
     UNIVERSITY_OF_NEW_HAMPSHIRE = "University of New Hampshire"
     UNIVERSITY_OF_PENNSYLVANIA = "University of Pennsylvania"
     UNIVERSITY_OF_RHODE_ISLAND = "University of Rhode Island"
+    UNIVERSITY_OF_RICHMOND = "University of Richmond"
     UNIVERSITY_OF_ROCHESTER = "University of Rochester"
     UNIVERSITY_OF_SOUTHERN_CALIFORNIA = "University of Southern California"
     UNIVERSITY_OF_TORONTO = "University of Toronto"

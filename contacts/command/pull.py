@@ -1,4 +1,5 @@
 """Command to pull contacts from a remote source."""
+
 from __future__ import annotations
 
 import time
@@ -14,7 +15,7 @@ from contacts.utils import (
 )
 
 
-def run(*, cached: bool) -> None:
+def run(*, cached: bool, ignore_updates: bool = False) -> None:
     icloud_contacts, _ = icloud_dao.read_contacts_and_groups(cached=cached)
     disk_contacts = disk_dao.read_contacts()
 
@@ -28,14 +29,20 @@ def run(*, cached: bool) -> None:
         if contact.icloud is not None
     }
 
-    for icloud_id in (
-        icloud_id_to_icloud_contact_map.keys() - icloud_id_to_disk_contact_map.keys()
-    ):
-        icloud_contact = icloud_id_to_icloud_contact_map[icloud_id]
-        print(pretty_print_utils.bordered(json_utils.dumps(icloud_contact.to_dict())))
-        if input_utils.yes_no_input("Accept creation?"):
-            icloud_id_to_disk_contact_map[icloud_id] = icloud_contact  # type: ignore
-            disk_dao.create_contacts([icloud_contact])
+    if not ignore_updates:
+        for icloud_id in (
+            icloud_id_to_icloud_contact_map.keys()
+            - icloud_id_to_disk_contact_map.keys()
+        ):
+            icloud_contact = icloud_id_to_icloud_contact_map[icloud_id]
+            print(
+                pretty_print_utils.bordered(
+                    json_utils.dumps_indented(icloud_contact.to_dict())
+                )
+            )
+            if input_utils.yes_no_input("Accept creation?"):
+                icloud_id_to_disk_contact_map[icloud_id] = icloud_contact  # type: ignore
+                disk_dao.create_contacts([icloud_contact])
 
     for icloud_id in (
         icloud_id_to_disk_contact_map.keys() & icloud_id_to_icloud_contact_map.keys()
@@ -53,10 +60,13 @@ def run(*, cached: bool) -> None:
                 disk_dao.update_contacts([updated_contact])
                 continue
 
+            if ignore_updates:
+                continue
+
             current_contact_display = pretty_print_utils.bordered(
-                json_utils.dumps(disk_contact.to_dict())
+                json_utils.dumps_indented(disk_contact.to_dict())
             )
-            diff_display = pretty_print_utils.bordered(json_utils.dumps(diff))
+            diff_display = pretty_print_utils.bordered(json_utils.dumps_indented(diff))
             print(pretty_print_utils.besides(current_contact_display, diff_display))
 
             if input_utils.yes_no_input("Accept update?"):

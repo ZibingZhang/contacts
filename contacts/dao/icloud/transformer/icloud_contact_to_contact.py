@@ -7,7 +7,7 @@ from contacts import model
 from contacts.dao import icloud
 from contacts.dao.icloud.model import notes as nt
 
-PHONE_NUMBER_REGEX = re.compile(r"^\+\d+$")
+PHONE_NUMBER_REGEX = re.compile(r"^\+\d+(;\d+)?$")
 AMERICAN_NUMBER_REGEX = re.compile(r"\d{10}")
 
 

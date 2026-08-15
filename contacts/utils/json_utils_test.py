@@ -5,4 +5,4 @@ from contacts.utils import json_utils
 
 
 def test_delegate_to_json_dumps() -> None:
-    assert json_utils.dumps({"key": "value"}) == '{\n  "key": "value"\n}'
+    assert json_utils.dumps_indented({"key": "value"}) == '{\n  "key": "value"\n}'

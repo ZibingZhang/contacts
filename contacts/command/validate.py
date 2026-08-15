@@ -1,4 +1,5 @@
 """Command to validate contacts."""
+
 from __future__ import annotations
 
 import collections
@@ -24,9 +25,10 @@ _PATTERN_TO_EXPECTED_TAG_MAP = {
     re.compile(r"^NHS.*$"): "NHS",
     re.compile(r"^NHS$"): "NPS",
     re.compile(r"^NPS.*$"): "NPS",
-    re.compile(r"^(NHS|NPS).+$"): "Needham",
+    re.compile(r"^(NHS|NPS).*$"): "Needham",
     re.compile(r"^NU.+$"): "NU",
     re.compile(r"^PowerAdvocate.+$"): "PowerAdvocate",
+    re.compile(r"^ROPO\d+$"): "ROPO",
     re.compile(r"^SAB$"): "Boston",
     re.compile(r"^Sharks.+$"): "Sharks",
 }
@@ -90,6 +92,16 @@ def _validate_education(contact: model.Contact, should_fix: bool) -> None:
                 contact, tag, _PATTERN_TO_HIGH_SCHOOL_NAME_MAP[pattern], should_fix
             )
 
+    if (
+        contact.education is not None
+        and contact.education.high_school is not None
+        and contact.education.high_school.name
+        == model.HighSchoolName.NEEDHAM_HIGH_SCHOOL
+    ):
+        _expect_tag(contact, "NHS", should_fix)
+        if (year := contact.education.high_school.graduation_year) is not None:
+            _expect_tag(contact, "NHS" + str(year)[2:], should_fix)
+
 
 def _expect_high_school(
     contact: model.Contact, tag: str, high_school_name: str, should_fix: bool
@@ -102,22 +114,22 @@ def _expect_high_school(
         graduation_year = None
 
     if contact.education is None:
-        LOG.info(f"{contact_name} missing education")
+        LOG.info(f"Adding education to {contact_name}")
         contact.education = model.Education(
             high_school=model.HighSchool(
                 name=high_school_name, graduation_year=graduation_year
             )
         )
     elif contact.education.high_school is None:
-        LOG.info(f"{contact_name} missing high school")
+        LOG.info(f"Adding high school to {contact_name}")
         contact.education.high_school = model.HighSchool(
-                name=high_school_name, graduation_year=graduation_year
-            )
+            name=high_school_name, graduation_year=graduation_year
+        )
     elif contact.education.high_school.name == high_school_name is None:
         LOG.warn(f"{contact_name} high school is not {high_school_name}")
     elif graduation_year is not None:
         if contact.education.high_school.graduation_year is None:
-            LOG.info(f"{contact_name} missing high school graduation year")
+            LOG.info(f"Adding high school graduation year to {contact_name}")
             contact.education.high_school.graduation_year = graduation_year
         elif graduation_year != contact.education.high_school.graduation_year:
             LOG.warn(f"{contact_name} mismatched high school graduation year")
@@ -136,12 +148,10 @@ def _expect_tag(contact: model.Contact, tag: str, should_fix: bool) -> None:
     if contact.tags is not None and tag in contact.tags:
         return
 
-    if should_fix:
-        LOG.info(f"Adding {tag} tag to {contact_utils.build_name_str(contact)}")
-    else:
-        LOG.info(f"{contact_utils.build_name_str(contact)} missing {tag} tag")
+    LOG.info(f"Adding {tag} tag to {contact_utils.build_name_str(contact)}")
 
-    contact.tags = (contact.tags or []) + [tag]
+    if should_fix:
+        contact.tags = (contact.tags or []) + [tag]
 
 
 def _any_tag_matches_pattern(

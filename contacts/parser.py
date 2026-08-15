@@ -1,4 +1,5 @@
 """Parse command line arguments."""
+
 from __future__ import annotations
 
 import argparse
@@ -21,11 +22,14 @@ def _create_parser() -> argparse.ArgumentParser:
         help="commands",
     )
 
+    _build_add_command_parser(command_parser)
+    _build_birthday_command_parser(command_parser)
     _build_families_command_parser(command_parser)
     _build_pull_command_parser(command_parser)
     _build_push_command_parser(command_parser)
-    _build_tag_command_parser(command_parser)
     _build_sync_groups_command_parser(command_parser)
+    _build_tag_command_parser(command_parser)
+    _build_tsv_command_parser(command_parser)
     _build_validate_command_parser(command_parser)
 
     return parser
@@ -39,11 +43,18 @@ def _build_add_command_parser(command_parser: argparse._SubParsersAction) -> Non
     )
 
 
-def _build_dump_command_parser(command_parser: argparse._SubParsersAction) -> None:
-    command_parser.add_parser(
-        command.Command.DUMP.value,
+def _build_birthday_command_parser(command_parser: argparse._SubParsersAction) -> None:
+    birthday_parser = command_parser.add_parser(
+        command.Command.BIRTHDAY.value,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        help="dump a contact",
+        help="view upcoming birthdays",
+    )
+    birthday_parser.add_argument(
+        "-d",
+        "--days",
+        default=14,
+        type=int,
+        help="specify number of days from today for which to display birthdays",
     )
 
 
@@ -53,15 +64,6 @@ def _build_families_command_parser(command_parser: argparse._SubParsersAction) -
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         help="view all families",
     )
-
-
-def _build_load_command_parser(command_parser: argparse._SubParsersAction) -> None:
-    load_parser = command_parser.add_parser(
-        command.Command.LOAD.value,
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        help="load a contact",
-    )
-    load_parser.add_argument("name", nargs="?")
 
 
 def _build_pull_command_parser(command_parser: argparse._SubParsersAction) -> None:
@@ -129,8 +131,36 @@ def _build_tag_command_parser(command_parser: argparse._SubParsersAction) -> Non
         "new",
     )
 
-    tag_action_parser.add_parser(
+    repl_tag_action_parser = tag_action_parser.add_parser(
         command.TagSubcommand.REPL, help="repl to add tags to contacts"
+    )
+    repl_tag_action_parser.add_argument("--tags", "-t", nargs="*")
+
+
+def _build_tsv_command_parser(command_parser: argparse._SubParsersAction) -> None:
+    tag_parser = command_parser.add_parser(
+        command.Command.TSV.value,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="TSV operations on contacts",
+    )
+
+    tsv_action_parser = tag_parser.add_subparsers(
+        dest="tsv_action", help="TSV operations on contacts"
+    )
+
+    tsv_dump_action_parser = tsv_action_parser.add_parser(
+        command.TsvSubcommand.DUMP, help="dump contacts into a TSV file"
+    )
+    tsv_dump_action_parser.add_argument("properties", nargs="*")
+
+    tsv_load_action_parser = tsv_action_parser.add_parser(
+        command.TsvSubcommand.LOAD, help="load contacts from a TSV file"
+    )
+    tsv_load_action_parser.add_argument(
+        "--write",
+        action="store_true",
+        default=False,
+        help="write the updated contacts",
     )
 
 

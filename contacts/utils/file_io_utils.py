@@ -1,4 +1,5 @@
 """Utilities for file I/O."""
+
 from __future__ import annotations
 
 import json
@@ -58,20 +59,6 @@ def write_contact_as_json_object(path: str, contact: model.Contact) -> None:
     """
     with open(path, mode="w+", encoding="utf-8") as f:
         f.write(contact.to_json(indent=2))
-
-
-def write_contacts_as_json_array(path: str, contacts: Sequence[model.Contact]) -> None:
-    """Write contacts to a file.
-
-    Transform a sequence of contacts to a json array of objects and write them to a
-    file.
-
-    Args:
-        path: The path of the file to write to.
-        contacts: The contacts to write to the file.
-    """
-    sorted_contacts = sorted(contacts, key=_contact_key)
-    write_dataclass_objects_as_json_array(path, sorted_contacts)
 
 
 def write_dataclass_objects_as_json_array(

@@ -1,4 +1,5 @@
 """The model for a contact."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -74,6 +75,7 @@ class Name(dataclasses_utils.DataClassJsonMixin):
     prefix: str | None = None
     first_name: str | None = None
     nickname: str | None = None
+    deadname: str | None = None
     middle_name: str | None = None
     last_name: str | None = None
     suffix: str | None = None
@@ -163,10 +165,16 @@ class Contact(dataclasses_utils.DataClassJsonMixin):
     icloud: ICloudContactMetadata | None = None
 
     def __setattr__(self, key: str, value: Any) -> None:
+        def get_address(email_address: EmailAddress | dict) -> str:
+            # TODO: fix loading TSVs
+            if type(email_address) == dict:
+                return email_address["address"]
+            return email_address.address
+
         if key == "email_addresses" and value is not None:
             super().__setattr__(
                 key,
-                sorted(value, key=lambda email_address: email_address.address),
+                sorted(value, key=lambda email_address: get_address(email_address)),
             )
         elif key == "tags" and value is not None:
             super().__setattr__(key, list(sorted(set(value))))

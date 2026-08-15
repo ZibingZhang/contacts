@@ -1,4 +1,5 @@
 """The disk data source."""
+
 from __future__ import annotations
 
 import os
@@ -39,7 +40,7 @@ class DiskDao:
                 contact.icloud = model.ICloudMetadata(uuid=uuid_utils.generate())
                 DiskDao.update_contacts([contact])
 
-        return contacts
+        return sorted(contacts, key=lambda contact: contact.id)
 
     @staticmethod
     def create_contacts(contacts: list[model.Contact]) -> None:
@@ -57,9 +58,8 @@ class DiskDao:
 
             contact.id = next_contact_id
             contact.mtime = time.time()
-            file_io_utils.write_contact_as_json_object(
-                os.path.join(DiskDao.DIRECTORY, f"{next_contact_id}.json"), contact
-            )
+            path = os.path.join(DiskDao.DIRECTORY, f"{next_contact_id}.json")
+            file_io_utils.write_contact_as_json_object(path, contact)
             next_contact_id += 1
 
     @staticmethod

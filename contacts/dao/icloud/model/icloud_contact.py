@@ -1,4 +1,5 @@
 """A dataclass representation of the json object response for an iCloud contact."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -95,6 +96,8 @@ class ICloudContact(dataclasses_utils.DataClassJsonMixin):
         ),
     )
     companyName: str | None = None
+    dateCreated: str | None = None
+    dateModified: str | None = None
     dates: list[Date] | None = None
     department: str | None = None
     emailAddresses: list[EmailAddress] | None = None

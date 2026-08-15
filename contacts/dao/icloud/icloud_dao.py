@@ -1,4 +1,5 @@
 """The iCloud data source."""
+
 from __future__ import annotations
 
 import configparser
@@ -58,13 +59,13 @@ class ICloudDao:
                 )
 
             contacts_file_path = os.path.join(
-                constant.CACHE_DIRECTORY, constant.ICLOUD_CONTACTS_FILE_NAME
+                constant.CACHE_DIRECTORY, constant.ICLOUD_CONTACTS_FILE
             )
             if not os.path.isfile(contacts_file_path):
                 raise ValueError(f"Contacts file does not exist, {contacts_file_path}")
 
             groups_file_path = os.path.join(
-                constant.CACHE_DIRECTORY, constant.ICLOUD_GROUPS_FILE_NAME
+                constant.CACHE_DIRECTORY, constant.ICLOUD_GROUPS_FILE
             )
             if not os.path.isfile(contacts_file_path):
                 raise ValueError(f"Groups file does not exist, {groups_file_path}")
@@ -83,15 +84,11 @@ class ICloudDao:
             icloud_contacts, icloud_groups = contact_manager.get_contacts_and_groups()
 
             file_io_utils.write_dataclass_objects_as_json_array(
-                os.path.join(
-                    constant.CACHE_DIRECTORY, constant.ICLOUD_CONTACTS_FILE_NAME
-                ),
+                os.path.join(constant.CACHE_DIRECTORY, constant.ICLOUD_CONTACTS_FILE),
                 icloud_contacts,
             )
             file_io_utils.write_dataclass_objects_as_json_array(
-                os.path.join(
-                    constant.CACHE_DIRECTORY, constant.ICLOUD_GROUPS_FILE_NAME
-                ),
+                os.path.join(constant.CACHE_DIRECTORY, constant.ICLOUD_GROUPS_FILE),
                 icloud_groups,
             )
 
@@ -124,7 +121,7 @@ class ICloudDao:
 
         LOG.info(f"Wrote {len(contacts)} new contacts to iCloud")
 
-    def update_contacts(self, contacts: list[contacts.model.Contact]) -> None:
+    def update_contacts(self, contacts: Sequence[contacts.model.Contact]) -> None:
         if len(contacts) == 0:
             return
 

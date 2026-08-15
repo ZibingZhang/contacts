@@ -16,6 +16,12 @@ def _run_command(cl_args: argparse.Namespace) -> None:
     LOG.setLevel(level=logging.INFO)
 
     match cl_args.command:
+        case command.Command.ADD:
+            command.add.run()
+
+        case command.Command.BIRTHDAY:
+            command.birthday.run(days=cl_args.days)
+
         case command.Command.FAMILIES:
             command.families.run()
 
@@ -39,7 +45,16 @@ def _run_command(cl_args: argparse.Namespace) -> None:
                 case command.TagSubcommand.MV:
                     command.tag_mv.run(old=cl_args.old, new=cl_args.new)
                 case command.TagSubcommand.REPL:
-                    command.tag_repl.run()
+                    command.tag_repl.run(tags=cl_args.tags)
+                case _:
+                    raise RuntimeError("Missing subcommand")
+
+        case command.Command.TSV:
+            match cl_args.tsv_action:
+                case command.TsvSubcommand.DUMP:
+                    command.tsv_dump.run(properties=cl_args.properties)
+                case command.TsvSubcommand.LOAD:
+                    command.tsv_load.run(write=cl_args.write)
                 case _:
                     raise RuntimeError("Missing subcommand")
 

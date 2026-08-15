@@ -1,4 +1,5 @@
 """Command to push contacts to a remote source."""
+
 from __future__ import annotations
 
 from typing import cast
@@ -36,7 +37,11 @@ def run(*, force: bool, write: bool) -> None:
         new_contact = icloud_id_to_disk_contact_map[icloud_id]
         _remove_unsynced_fields(new_contact)
 
-        print(pretty_print_utils.bordered(json_utils.dumps(new_contact.to_dict())))
+        print(
+            pretty_print_utils.bordered(
+                json_utils.dumps_indented(new_contact.to_dict())
+            )
+        )
 
         if force or input_utils.yes_no_input("Accept creation?"):
             icloud_id_to_icloud_contact_map[icloud_id] = new_contact
@@ -44,6 +49,10 @@ def run(*, force: bool, write: bool) -> None:
 
     if write:
         icloud_dao.create_contacts(new_contacts)
+
+        if len(new_contacts) > 0:
+            LOG.info("Pulling contacts to sync etags")
+            command.pull.run(cached=False)
     else:
         LOG.info(f"Would have written {len(new_contacts)} new contacts to iCloud")
 
@@ -58,9 +67,9 @@ def run(*, force: bool, write: bool) -> None:
 
         if diff:
             current_contact_display = pretty_print_utils.bordered(
-                json_utils.dumps(icloud_contact.to_dict())
+                json_utils.dumps_indented(icloud_contact.to_dict())
             )
-            diff_display = pretty_print_utils.bordered(json_utils.dumps(diff))
+            diff_display = pretty_print_utils.bordered(json_utils.dumps_indented(diff))
             print(pretty_print_utils.besides(current_contact_display, diff_display))
 
             updates = diff.get("$update")
@@ -76,19 +85,33 @@ def run(*, force: bool, write: bool) -> None:
                 icloud_id_to_icloud_contact_map[icloud_id] = disk_contact
                 updated_contacts.append(disk_contact)
 
-    if write:
-        icloud_dao.update_contacts(updated_contacts)
-    else:
-        LOG.info(
-            f"Would have written {len(updated_contacts)} updated contacts to iCloud"
-        )
+                if len(updated_contacts) == 5:
+                    if write:
+                        icloud_dao.update_contacts(updated_contacts)
+                        LOG.info("Pulling contacts to sync etags")
+                        command.pull.run(cached=False, ignore_updates=True)
+                    else:
+                        LOG.info(
+                            f"Would have written {len(updated_contacts)} updated contacts to iCloud"
+                        )
+                    updated_contacts = []
 
-    if write and (len(new_contacts) > 0 or len(updated_contacts) > 0):
-        LOG.info("Pulling contacts to sync etags")
-        command.pull.run(cached=False)
+    if len(updated_contacts) > 0:
+        if write:
+            icloud_dao.update_contacts(updated_contacts)
+            LOG.info("Pulling contacts to sync etags")
+            command.pull.run(cached=False, ignore_updates=True)
+        else:
+            LOG.info(
+                f"Would have written {len(updated_contacts)} updated contacts to iCloud"
+            )
 
 
 def _remove_unsynced_fields(contact: model.DiskContact) -> None:
+    try:
+        del contact.name.deadname  # type: ignore
+    except AttributeError:
+        pass
     try:
         del contact.social_profiles.instagram.finsta_usernames  # type: ignore
     except AttributeError:

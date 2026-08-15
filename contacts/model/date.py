@@ -11,7 +11,7 @@ from contacts.common import error
 from contacts.utils import dataclasses_utils
 
 
-def encoder(date: model.Date | None) -> str | None:
+def encoder(date: model.Date | dict | None) -> str | None:
     """An encoder for a date field.
 
     Returns:
@@ -19,6 +19,13 @@ def encoder(date: model.Date | None) -> str | None:
     """
     if date is None:
         return None
+    # TODO: fix loading TSVs
+    if type(date) == dict:
+        return (
+            f"{date['year'] if date.get('year') is not None else 'XXXX':04}"
+            f"-{date['month'] if date.get('month') is not None else 'XX':02}"
+            f"-{date['day'] if date.get('day') is not None else 'XX':02}"
+        )
     return (
         f"{date.year if date.year is not None else 'XXXX':04}"
         f"-{date.month if date.month is not None else 'XX':02}"

@@ -3,12 +3,13 @@ import time
 from collections.abc import Callable
 
 from contacts import model
+from contacts.dao import disk_dao, icloud_dao
 from contacts.utils import command_utils, uuid_utils
 
 
 def run() -> None:
-    contacts = command_utils.read_contacts_from_disk()
-    icloud_groups = command_utils.read_groups_from_icloud()
+    contacts = disk_dao.read_contacts()
+    _, icloud_groups = icloud_dao.read_contacts_and_groups()
     group_name_to_icloud_group_map: dict[str, model.Group] = {
         icloud_group.name: icloud_group for icloud_group in icloud_groups
     }
@@ -49,10 +50,19 @@ def run() -> None:
 
 
 def _has_tag_predicate_factory(tag: str) -> Callable[[model.Contact], bool]:
-    def has_tag_predicate(contact: model.Contact) -> bool:
-        return contact.tags is not None and tag in contact.tags
+    return _has_any_tag_predicate_factory([tag])
 
-    return has_tag_predicate
+
+def _has_any_tag_predicate_factory(tags: list[str]) -> Callable[[model.Contact], bool]:
+    def has_any_tag_predicate(contact: model.Contact) -> bool:
+        if contact.tags is None:
+            return False
+        for tag in tags:
+            if tag in contact.tags:
+                return True
+        return False
+
+    return has_any_tag_predicate
 
 
 def _has_phone_number_predicate(contact: model.Contact) -> bool:
