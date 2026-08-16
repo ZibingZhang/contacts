@@ -17,8 +17,8 @@ def run(*, days: int) -> None:
     )
     min_day = datetime.date.today()
     max_day = min_day + datetime.timedelta(days=days)
-    min_day_int = 100 * min_day.month + min_day.day
-    max_day_int = 100 * max_day.month + max_day.day
+    min_day_int = format_date_as_mmdd(min_day)
+    max_day_int = format_date_as_mmdd(max_day)
     same_year = min_day.year == max_day.year
 
     contacts = []
@@ -53,3 +53,7 @@ def format_birthday_as_mmdd(contact: model.Contact) -> int:
     ):
         return sys.maxsize
     return 100 * contact.birthday.month + contact.birthday.day
+
+
+def format_date_as_mmdd(date: datetime.date) -> int:
+    return 100 * date.month + date.day
