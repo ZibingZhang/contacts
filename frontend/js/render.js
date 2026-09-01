@@ -311,17 +311,6 @@ export function renderContactListItem(contact) {
   name.textContent = buildDisplayName(contact.name) || `Contact ${contact.id}`;
   item.appendChild(name);
 
-  if (contact.tags && contact.tags.length) {
-    const tagsWrap = document.createElement("div");
-    for (const tag of contact.tags.slice(0, 4)) {
-      const badge = document.createElement("span");
-      badge.className = "badge text-bg-light border me-1";
-      badge.textContent = tag;
-      tagsWrap.appendChild(badge);
-    }
-    item.appendChild(tagsWrap);
-  }
-
   return item;
 }
 
