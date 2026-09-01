@@ -184,13 +184,17 @@ function compareByName(a, b) {
   return 0;
 }
 
-// A contact matches the tag filter if it has at least one of the selected
-// tags (OR across the facet), or if no tags are selected at all.
+// A contact matches the tag filter if it has all of the selected tags
+// (AND across the facet), or if no tags are selected at all.
 function contactMatchesTags(contact, tags) {
   if (tags.size === 0) {
     return true;
   }
-  return Boolean(contact.tags && contact.tags.some((tag) => tags.has(tag)));
+  if (!contact.tags) {
+    return false;
+  }
+  const contactTags = new Set(contact.tags);
+  return Array.from(tags).every((tag) => contactTags.has(tag));
 }
 
 function applyFilters() {
