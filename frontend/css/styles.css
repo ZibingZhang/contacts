@@ -59,3 +59,56 @@
 .tag-filter-item .tag-filter-label {
   flex: 1 1 auto;
 }
+
+.contact-letter-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.15rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--bs-secondary-color);
+  background-color: var(--bs-tertiary-bg);
+}
+
+#contact-list-footer {
+  flex-shrink: 0;
+}
+
+#contact-list-scroll {
+  align-items: flex-start;
+}
+
+#contact-list {
+  align-self: flex-start;
+}
+
+#alpha-index {
+  flex: 0 0 16px;
+  align-self: flex-start;
+  position: sticky;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.25rem 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.alpha-index-letter {
+  font-size: 0.6rem;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--bs-secondary-color);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.alpha-index-letter:not(.disabled):hover {
+  color: #fff;
+  background-color: var(--bs-primary);
+}
+
+.alpha-index-letter.disabled {
+  color: var(--bs-border-color);
+  cursor: default;
+}

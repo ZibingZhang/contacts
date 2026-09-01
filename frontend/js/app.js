@@ -19,6 +19,11 @@ const tagFilterCountEl = document.getElementById("tag-filter-count");
 const tagFilterSearchInput = document.getElementById("tag-filter-search");
 const tagFilterOptionsEl = document.getElementById("tag-filter-options");
 const tagFilterClearBtn = document.getElementById("tag-filter-clear");
+const alphaIndexEl = document.getElementById("alpha-index");
+const contactListFooterEl = document.getElementById("contact-list-footer");
+const contactListScrollEl = document.getElementById("contact-list-scroll");
+
+const ALPHA_INDEX_LETTERS = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "#"];
 
 let allContacts = [];
 let allTags = [];
@@ -169,6 +174,16 @@ function filterContacts(contacts, query) {
   return scored.map((entry) => entry.contact);
 }
 
+// The letter a contact is grouped/indexed under, matching the field
+// `compareByName` sorts on first so that same-letter contacts stay
+// contiguous. Falls back to "#" for names that don't start with a letter.
+function contactLetter(contact) {
+  const first = (contact.name && contact.name.first_name) || "";
+  const last = (contact.name && contact.name.last_name) || "";
+  const ch = (first || last).trim().charAt(0).toUpperCase();
+  return /[A-Z]/.test(ch) ? ch : "#";
+}
+
 // Alphabetical fallback ordering: first name, then last name, case-insensitive.
 function compareByName(a, b) {
   const firstA = ((a.name && a.name.first_name) || "").toLowerCase();
@@ -244,11 +259,75 @@ function highlightSelectedListItem() {
   }
 }
 
+// Letter sections and the alphabet index only make sense when contacts are
+// in alphabetical order; an active search re-ranks by relevance instead.
+function isAlphabetical() {
+  return !searchInput.value.trim();
+}
+
 function renderList(contacts) {
   currentContacts = contacts;
   listStatusEl.replaceChildren();
-  listEl.replaceChildren(renderContactList(contacts));
+  const grouped = isAlphabetical();
+  listEl.replaceChildren(renderContactList(contacts, grouped ? contactLetter : null));
   highlightSelectedListItem();
+  renderAlphaIndex(grouped);
+  renderListFooter(contacts.length);
+}
+
+function renderAlphaIndex(grouped) {
+  alphaIndexEl.hidden = !grouped;
+  if (!grouped) {
+    return;
+  }
+
+  const lettersPresent = new Set(currentContacts.map(contactLetter));
+  alphaIndexEl.replaceChildren();
+  for (const letter of ALPHA_INDEX_LETTERS) {
+    const el = document.createElement("div");
+    el.className = "alpha-index-letter";
+    el.textContent = letter;
+    el.dataset.letter = letter;
+    if (!lettersPresent.has(letter)) {
+      el.classList.add("disabled");
+    }
+    alphaIndexEl.appendChild(el);
+  }
+}
+
+function renderListFooter(count) {
+  contactListFooterEl.textContent = `${count} contact${count === 1 ? "" : "s"}`;
+}
+
+// Scrolls `item` to the top of the list, then nudges past any sticky letter
+// header immediately above it so the header doesn't end up pinned on top of
+// (and hiding) the item itself.
+function scrollListItemToTop(item) {
+  item.scrollIntoView({ block: "start" });
+  const prev = item.previousElementSibling;
+  if (prev && prev.classList.contains("contact-letter-header")) {
+    contactListScrollEl.scrollTop -= prev.offsetHeight;
+  }
+}
+
+// Scrolls via the header's first contact item rather than the header itself.
+// The header is `position: sticky`, so once it's been scrolled past, browsers
+// report its position/rect as wherever it's currently pinned rather than its
+// true document position — scrollIntoView on it is then a no-op, which is
+// why jumping to an earlier letter (up) silently failed while jumping to a
+// later one (down) worked. Contact items aren't sticky, so their position is
+// always reported accurately.
+function jumpToLetter(letter) {
+  const header = document.getElementById(`contact-letter-${letter}`);
+  if (!header) {
+    return;
+  }
+  const firstItem = header.nextElementSibling;
+  if (firstItem) {
+    scrollListItemToTop(firstItem);
+  } else {
+    header.scrollIntoView({ block: "start" });
+  }
 }
 
 async function loadContacts() {
@@ -302,6 +381,27 @@ function moveSelection(delta) {
   }
 }
 
+// Jumps the selection straight to the first or last contact in the
+// currently displayed list.
+function selectBoundaryContact(position) {
+  if (!currentContacts.length) {
+    return;
+  }
+
+  const contact = position === "first" ? currentContacts[0] : currentContacts[currentContacts.length - 1];
+  selectContact(contact.id);
+
+  const item = listEl.querySelector(`[data-contact-id="${contact.id}"]`);
+  if (!item) {
+    return;
+  }
+  if (position === "first") {
+    scrollListItemToTop(item);
+  } else {
+    item.scrollIntoView({ block: "end" });
+  }
+}
+
 function updateSearchClearVisibility() {
   searchClearBtn.hidden = !searchInput.value;
 }
@@ -351,6 +451,42 @@ function init() {
     renderList(applyFilters());
   });
 
+  let isDraggingAlphaIndex = false;
+
+  function letterFromPoint(clientX, clientY) {
+    const el = document.elementFromPoint(clientX, clientY);
+    return el && el.dataset && el.dataset.letter && !el.classList.contains("disabled")
+      ? el.dataset.letter
+      : null;
+  }
+
+  function handleAlphaIndexPointer(event) {
+    const letter = letterFromPoint(event.clientX, event.clientY);
+    if (letter) {
+      jumpToLetter(letter);
+    }
+  }
+
+  alphaIndexEl.addEventListener("pointerdown", (event) => {
+    isDraggingAlphaIndex = true;
+    alphaIndexEl.setPointerCapture(event.pointerId);
+    handleAlphaIndexPointer(event);
+  });
+
+  alphaIndexEl.addEventListener("pointermove", (event) => {
+    if (isDraggingAlphaIndex) {
+      handleAlphaIndexPointer(event);
+    }
+  });
+
+  alphaIndexEl.addEventListener("pointerup", () => {
+    isDraggingAlphaIndex = false;
+  });
+
+  alphaIndexEl.addEventListener("pointercancel", () => {
+    isDraggingAlphaIndex = false;
+  });
+
   listEl.addEventListener("click", (event) => {
     const item = event.target.closest("[data-contact-id]");
     if (!item) {
@@ -361,12 +497,13 @@ function init() {
   });
 
   document.addEventListener("keydown", (event) => {
+    const jumpToBoundary = event.metaKey || event.ctrlKey;
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      moveSelection(1);
+      jumpToBoundary ? selectBoundaryContact("last") : moveSelection(1);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      moveSelection(-1);
+      jumpToBoundary ? selectBoundaryContact("first") : moveSelection(-1);
     }
   });
 }

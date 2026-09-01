@@ -314,9 +314,28 @@ export function renderContactListItem(contact) {
   return item;
 }
 
-export function renderContactList(contacts) {
+export function renderLetterHeader(letter) {
+  const header = document.createElement("div");
+  header.className = "contact-letter-header";
+  header.id = `contact-letter-${letter}`;
+  header.textContent = letter;
+  return header;
+}
+
+// Renders the contact list. When `letterOf` is provided, contacts are
+// assumed to already be sorted so that same-letter contacts are contiguous,
+// and a sticky letter header is inserted before each new letter group.
+export function renderContactList(contacts, letterOf = null) {
   const fragment = document.createDocumentFragment();
+  let currentLetter = null;
   for (const contact of contacts) {
+    if (letterOf) {
+      const letter = letterOf(contact);
+      if (letter !== currentLetter) {
+        currentLetter = letter;
+        fragment.appendChild(renderLetterHeader(letter));
+      }
+    }
     fragment.appendChild(renderContactListItem(contact));
   }
   return fragment;
