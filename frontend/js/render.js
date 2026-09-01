@@ -157,12 +157,28 @@ export function renderBirthdaySection(contact) {
   return section("Birthday", [fieldRow("Birthday", formatted)]);
 }
 
+const NANP_COUNTRY_CODE = 1;
+
+// NANP (US/Canada/etc.) numbers get the familiar "+1 (XXX) XXX-XXXX" look;
+// everything else just gets a space after the country code, since we don't
+// know each country's local formatting conventions.
+function formatPhoneNumber(phone) {
+  const { country_code: countryCode, number } = phone;
+  if (countryCode === NANP_COUNTRY_CODE && /^\d{10}$/.test(number)) {
+    const areaCode = number.slice(0, 3);
+    const exchange = number.slice(3, 6);
+    const line = number.slice(6);
+    return `+${countryCode} (${areaCode}) ${exchange}-${line}`;
+  }
+  return `+${countryCode} ${number}`;
+}
+
 export function renderPhoneSection(contact) {
   if (!contact.phone_numbers || !contact.phone_numbers.length) {
     return null;
   }
   const rows = contact.phone_numbers.map((phone) =>
-    fieldRow(phone.label || "Phone", `+${phone.country_code}${phone.number}`)
+    fieldRow(phone.label || "Phone", formatPhoneNumber(phone))
   );
   return section("Phone Numbers", rows);
 }
