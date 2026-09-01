@@ -11,7 +11,7 @@
   <div class="d-flex vh-100">
     <nav id="contact-nav" class="d-flex flex-column border-end flex-shrink-0">
       <div class="p-2 border-bottom">
-        <div class="position-relative">
+        <div class="position-relative mb-2">
           <input
             id="search-input"
             type="text"
@@ -26,6 +26,39 @@
             aria-label="Clear search"
             hidden
           ></button>
+        </div>
+        <div class="dropdown">
+          <button
+            id="tag-filter-toggle"
+            class="btn btn-outline-secondary btn-sm dropdown-toggle d-inline-flex align-items-center"
+            type="button"
+            data-bs-toggle="dropdown"
+            data-bs-auto-close="outside"
+            aria-expanded="false"
+            aria-label="Filter by tag"
+            title="Filter by tag"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2z"/>
+            </svg>
+            <span id="tag-filter-count" class="badge text-bg-primary ms-1" hidden></span>
+          </button>
+          <div class="dropdown-menu p-0" id="tag-filter-menu" aria-labelledby="tag-filter-toggle">
+            <div class="p-2 border-bottom">
+              <input
+                id="tag-filter-search"
+                type="text"
+                class="form-control form-control-sm"
+                placeholder="Search tags…"
+                aria-label="Search tags"
+              >
+            </div>
+            <div id="tag-filter-options" class="px-1 py-1"></div>
+            <div class="dropdown-divider"></div>
+            <button type="button" id="tag-filter-clear" class="dropdown-item text-secondary small">
+              Clear tag filters
+            </button>
+          </div>
         </div>
       </div>
       <div id="list-status" class="px-2 pt-2"></div>

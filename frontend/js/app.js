@@ -1,8 +1,9 @@
-import { fetchContacts, ApiError } from "./api.js";
+import { fetchContacts, fetchTags, ApiError } from "./api.js";
 import { API_BASE_URL } from "./config.js";
 import {
   buildDisplayName,
   renderContactList,
+  renderTagFilterOptions,
   renderContactDetail,
   renderEmptyState,
   renderLoading,
@@ -14,8 +15,14 @@ const listStatusEl = document.getElementById("list-status");
 const detailEl = document.getElementById("contact-detail");
 const searchInput = document.getElementById("search-input");
 const searchClearBtn = document.getElementById("search-clear");
+const tagFilterCountEl = document.getElementById("tag-filter-count");
+const tagFilterSearchInput = document.getElementById("tag-filter-search");
+const tagFilterOptionsEl = document.getElementById("tag-filter-options");
+const tagFilterClearBtn = document.getElementById("tag-filter-clear");
 
 let allContacts = [];
+let allTags = [];
+let selectedTags = new Set();
 let currentContacts = [];
 let selectedContactId = null;
 
@@ -177,6 +184,46 @@ function compareByName(a, b) {
   return 0;
 }
 
+// A contact matches the tag filter if it has at least one of the selected
+// tags (OR across the facet), or if no tags are selected at all.
+function contactMatchesTags(contact, tags) {
+  if (tags.size === 0) {
+    return true;
+  }
+  return Boolean(contact.tags && contact.tags.some((tag) => tags.has(tag)));
+}
+
+function applyFilters() {
+  const tagFiltered = allContacts.filter((contact) => contactMatchesTags(contact, selectedTags));
+  return filterContacts(tagFiltered, searchInput.value);
+}
+
+function updateTagFilterCount() {
+  const count = selectedTags.size;
+  tagFilterCountEl.hidden = count === 0;
+  tagFilterCountEl.textContent = String(count);
+}
+
+function renderTagFilterMenu() {
+  const query = tagFilterSearchInput.value.trim().toLowerCase();
+  const visibleTags = query
+    ? allTags.filter(({ tag }) => tag.toLowerCase().includes(query))
+    : allTags;
+  const emptyMessage = query ? "No matching tags" : "No tags";
+  tagFilterOptionsEl.replaceChildren(renderTagFilterOptions(visibleTags, selectedTags, emptyMessage));
+  updateTagFilterCount();
+}
+
+async function loadTags() {
+  try {
+    const data = await fetchTags();
+    allTags = data.tags;
+  } catch {
+    allTags = [];
+  }
+  renderTagFilterMenu();
+}
+
 function networkErrorMessage(error) {
   if (error instanceof ApiError) {
     return error.message;
@@ -212,7 +259,7 @@ async function loadContacts() {
   }
 
   allContacts = data.contacts;
-  renderList(filterContacts(allContacts, searchInput.value));
+  renderList(applyFilters());
 }
 
 function selectContact(id) {
@@ -258,18 +305,46 @@ function updateSearchClearVisibility() {
 function init() {
   detailEl.replaceChildren(renderEmptyState());
   loadContacts();
+  loadTags();
   updateSearchClearVisibility();
 
-  searchInput.addEventListener("input", (event) => {
+  searchInput.addEventListener("input", () => {
     updateSearchClearVisibility();
-    renderList(filterContacts(allContacts, event.target.value));
+    renderList(applyFilters());
   });
 
   searchClearBtn.addEventListener("click", () => {
     searchInput.value = "";
     updateSearchClearVisibility();
     searchInput.focus();
-    renderList(filterContacts(allContacts, ""));
+    renderList(applyFilters());
+  });
+
+  tagFilterSearchInput.addEventListener("input", () => {
+    renderTagFilterMenu();
+  });
+
+  tagFilterOptionsEl.addEventListener("change", (event) => {
+    const checkbox = event.target.closest("[data-tag-checkbox]");
+    if (!checkbox) {
+      return;
+    }
+    if (checkbox.checked) {
+      selectedTags.add(checkbox.value);
+    } else {
+      selectedTags.delete(checkbox.value);
+    }
+    updateTagFilterCount();
+    renderList(applyFilters());
+  });
+
+  tagFilterClearBtn.addEventListener("click", () => {
+    if (selectedTags.size === 0) {
+      return;
+    }
+    selectedTags.clear();
+    renderTagFilterMenu();
+    renderList(applyFilters());
   });
 
   listEl.addEventListener("click", (event) => {

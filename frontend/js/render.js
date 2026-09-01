@@ -333,6 +333,43 @@ export function renderContactList(contacts) {
   return fragment;
 }
 
+export function renderTagFilterOptions(tags, selectedTags, emptyMessage = "No tags") {
+  const fragment = document.createDocumentFragment();
+
+  if (!tags.length) {
+    const empty = document.createElement("div");
+    empty.className = "text-secondary small px-2 py-1";
+    empty.textContent = emptyMessage;
+    fragment.appendChild(empty);
+    return fragment;
+  }
+
+  for (const { tag, count } of tags) {
+    const label = document.createElement("label");
+    label.className = "tag-filter-item dropdown-item";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "form-check-input mt-0";
+    checkbox.value = tag;
+    checkbox.checked = selectedTags.has(tag);
+    checkbox.dataset.tagCheckbox = "true";
+
+    const text = document.createElement("span");
+    text.className = "tag-filter-label";
+    text.textContent = tag;
+
+    const countBadge = document.createElement("span");
+    countBadge.className = "badge text-bg-light border text-secondary";
+    countBadge.textContent = String(count);
+
+    label.append(checkbox, text, countBadge);
+    fragment.appendChild(label);
+  }
+
+  return fragment;
+}
+
 export function renderEmptyState() {
   const div = document.createElement("div");
   div.className = "text-secondary";

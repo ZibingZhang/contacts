@@ -39,3 +39,23 @@
   font-weight: 600;
   color: var(--bs-secondary-color);
 }
+
+#tag-filter-menu {
+  min-width: 240px;
+}
+
+#tag-filter-options {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.tag-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.tag-filter-item .tag-filter-label {
+  flex: 1 1 auto;
+}
