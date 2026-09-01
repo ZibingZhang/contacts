@@ -8,14 +8,28 @@ from contacts import model
 from contacts.dao import disk_dao
 from contacts.utils import contact_utils
 
+_contacts_cache: list[model.DiskContact] | None = None
+
 
 def list_contacts() -> list[model.DiskContact]:
-    """List all contacts.
+    """List all contacts, reading from disk only on the first call.
+
+    Subsequent calls are served from an in-memory cache until
+    invalidate_contacts_cache() is called.
 
     Returns:
         All contacts.
     """
-    return disk_dao.read_contacts()
+    global _contacts_cache
+    if _contacts_cache is None:
+        _contacts_cache = disk_dao.read_contacts()
+    return _contacts_cache
+
+
+def invalidate_contacts_cache() -> None:
+    """Clear the cached contacts so the next list_contacts() re-reads from disk."""
+    global _contacts_cache
+    _contacts_cache = None
 
 
 def get_contact(contact_id: int) -> model.DiskContact | None:

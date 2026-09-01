@@ -9,6 +9,13 @@ from contacts.fixtures import contact_fixtures
 from contacts.server import service
 
 
+@pytest.fixture(autouse=True)
+def reset_contacts_cache():
+    service.invalidate_contacts_cache()
+    yield
+    service.invalidate_contacts_cache()
+
+
 @pytest.fixture
 def contacts() -> list[model.Contact]:
     return [
@@ -28,6 +35,39 @@ def test_list_contacts(monkeypatch, contacts) -> None:
     monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
 
     assert service.list_contacts() == contacts
+
+
+def test_list_contacts_caches_after_first_read(monkeypatch, contacts) -> None:
+    read_calls = 0
+
+    def read_contacts():
+        nonlocal read_calls
+        read_calls += 1
+        return contacts
+
+    monkeypatch.setattr(service.disk_dao, "read_contacts", read_contacts)
+
+    service.list_contacts()
+    service.list_contacts()
+
+    assert read_calls == 1
+
+
+def test_invalidate_contacts_cache_forces_reread(monkeypatch, contacts) -> None:
+    read_calls = 0
+
+    def read_contacts():
+        nonlocal read_calls
+        read_calls += 1
+        return contacts
+
+    monkeypatch.setattr(service.disk_dao, "read_contacts", read_contacts)
+
+    service.list_contacts()
+    service.invalidate_contacts_cache()
+    service.list_contacts()
+
+    assert read_calls == 2
 
 
 def test_get_contact_found(monkeypatch, contacts) -> None:

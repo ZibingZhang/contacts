@@ -10,6 +10,13 @@ from contacts.server import service
 from contacts.server.app import create_app
 
 
+@pytest.fixture(autouse=True)
+def reset_contacts_cache():
+    service.invalidate_contacts_cache()
+    yield
+    service.invalidate_contacts_cache()
+
+
 @pytest.fixture
 def contacts() -> list[model.Contact]:
     return [
