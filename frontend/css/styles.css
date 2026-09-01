@@ -1,0 +1,41 @@
+#contact-nav {
+  width: 320px;
+}
+
+#contact-list .list-group-item.active {
+  background-color: var(--bs-primary);
+  border-color: var(--bs-primary);
+}
+
+.field-row {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+}
+
+.field-row .field-label {
+  flex: 0 0 140px;
+  color: var(--bs-secondary-color);
+  font-size: 0.875rem;
+}
+
+.field-row .field-value {
+  flex: 1 1 auto;
+}
+
+.detail-section + .detail-section {
+  margin-top: 1.5rem;
+}
+
+.detail-avatar-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bs-secondary-bg);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+}

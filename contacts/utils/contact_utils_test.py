@@ -102,3 +102,31 @@ def test_add_phone_number_error_if_number_not_all_digits() -> None:
         contact_utils.add_phone_number_if_not_exists(
             contact_fixtures.build(), model.CountryCode.NANP, "123a", "HOME"
         )
+
+
+def test_search_contacts_by_full_name() -> None:
+    john = contact_fixtures.build(name=model.Name(first_name="John", last_name="Smith"))
+    jane = contact_fixtures.build(name=model.Name(first_name="Jane", last_name="Doe"))
+
+    assert contact_utils.search_contacts([john, jane], "john smith") == [john]
+
+
+def test_search_contacts_by_partial_name() -> None:
+    john = contact_fixtures.build(name=model.Name(first_name="John", last_name="Smith"))
+    jane = contact_fixtures.build(name=model.Name(first_name="Jane", last_name="Doe"))
+
+    assert contact_utils.search_contacts([john, jane], "smith") == [john]
+
+
+def test_search_contacts_by_nickname() -> None:
+    john = contact_fixtures.build(
+        name=model.Name(first_name="Jonathan", nickname="John", last_name="Smith")
+    )
+
+    assert contact_utils.search_contacts([john], "john smith") == [john]
+
+
+def test_search_contacts_no_match() -> None:
+    john = contact_fixtures.build(name=model.Name(first_name="John", last_name="Smith"))
+
+    assert contact_utils.search_contacts([john], "nobody") == []

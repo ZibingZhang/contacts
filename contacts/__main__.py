@@ -34,6 +34,9 @@ def _run_command(cl_args: argparse.Namespace) -> None:
             icloud_dao.authenticate()
             command.push.run(force=cl_args.force, write=cl_args.write)
 
+        case command.Command.SERVE:
+            command.serve.run(host=cl_args.host, port=cl_args.port, debug=cl_args.debug)
+
         case command.Command.SYNC_GROUPS:
             icloud_dao.authenticate()
             command.sync_groups.run()

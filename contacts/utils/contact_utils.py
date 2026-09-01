@@ -97,6 +97,43 @@ def build_name_and_tags_str(contact: model.Contact) -> str:
     return f"{build_name_str(contact)} -- {contact.tags}"
 
 
+def search_contacts(
+    contacts: Sequence[model.Contact], query: str
+) -> list[model.Contact]:
+    """Find contacts whose name matches a free-text query.
+
+    Args:
+        contacts: The contacts to search.
+        query: A free-text name query (case-insensitive substring match).
+
+    Returns:
+        The matching contacts.
+    """
+    query = " ".join(query.strip().split()).lower()
+    matching_contacts = []
+
+    if query.count(" ") == 1:
+        first_name, last_name = query.split()
+        for contact in contacts:
+            if (
+                first_name in f"{contact.name.first_name}".lower()
+                or first_name in f"{contact.name.nickname}".lower()
+            ) and last_name in f"{contact.name.last_name}".lower():
+                matching_contacts.append(contact)
+                continue
+
+    for contact in contacts:
+        contact_name = (
+            f"{contact.name.first_name} "
+            f"{contact.name.nickname} "
+            f"{contact.name.middle_name} "
+            f"{contact.name.last_name}"
+        ).lower()
+        if query in contact_name:
+            matching_contacts.append(contact)
+    return matching_contacts
+
+
 def extract_tags(contacts: Sequence[model.Contact]) -> list[str]:
     """Extract all tags from the contacts.
 

@@ -27,6 +27,7 @@ def _create_parser() -> argparse.ArgumentParser:
     _build_families_command_parser(command_parser)
     _build_pull_command_parser(command_parser)
     _build_push_command_parser(command_parser)
+    _build_serve_command_parser(command_parser)
     _build_sync_groups_command_parser(command_parser)
     _build_tag_command_parser(command_parser)
     _build_tsv_command_parser(command_parser)
@@ -94,6 +95,26 @@ def _build_push_command_parser(command_parser: argparse._SubParsersAction) -> No
         action="store_true",
         default=False,
         help="write the contact creations / updates",
+    )
+
+
+def _build_serve_command_parser(command_parser: argparse._SubParsersAction) -> None:
+    serve_parser = command_parser.add_parser(
+        command.Command.SERVE.value,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="run the read-only HTTP API server",
+    )
+    serve_parser.add_argument(
+        "--host", default="127.0.0.1", help="host to bind the server to"
+    )
+    serve_parser.add_argument(
+        "--port", type=int, default=5000, help="port to bind the server to"
+    )
+    serve_parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="run the server in debug mode",
     )
 
 

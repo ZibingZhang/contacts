@@ -8,6 +8,7 @@ from contacts.command import (
     families,
     pull,
     push,
+    serve,
     sync_groups,
     tag_ls,
     tag_mv,
@@ -24,6 +25,7 @@ class Command(enum.StrEnum):
     FAMILIES = "families"
     PULL = "pull"
     PUSH = "push"
+    SERVE = "serve"
     SYNC_GROUPS = "sync-groups"
     TAG = "tag"
     TSV = "tsv"

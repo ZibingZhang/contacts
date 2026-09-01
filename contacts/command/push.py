@@ -70,9 +70,7 @@ def run(*, force: bool, write: bool) -> None:
                 json_utils.dumps_indented(icloud_contact.to_dict())
             )
             diff_display = pretty_print_utils.bordered(json_utils.dumps_indented(diff))
-            print(
-                pretty_print_utils.besides(current_contact_display, diff_display)
-            )
+            print(pretty_print_utils.besides(current_contact_display, diff_display))
 
             updates = diff.get("$update")
             if updates is not None and "notes" in updates:

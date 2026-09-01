@@ -107,7 +107,7 @@ def get_contact_by_name(
     else:
         name = name.lower()
 
-    matching_contacts = _get_matching_contacts(contacts, name)
+    matching_contacts = contact_utils.search_contacts(contacts, name)
     if len(matching_contacts) == 0:
         return None
     elif len(matching_contacts) == 1:
@@ -137,31 +137,3 @@ def get_contact_by_name(
                 )
 
         return matching_contacts[selection - 1]
-
-
-def _get_matching_contacts(
-    contacts: Sequence[model.Contact], name: str
-) -> list[model.Contact]:
-    name = " ".join(name.strip().split())
-    matching_contacts = []
-
-    if name.count(" ") == 1:
-        first_name, last_name = name.split()
-        for contact in contacts:
-            if (
-                first_name in f"{contact.name.first_name}".lower()
-                or first_name in f"{contact.name.nickname}".lower()
-            ) and last_name in f"{contact.name.last_name}".lower():
-                matching_contacts.append(contact)
-                continue
-
-    for contact in contacts:
-        contact_name = (
-            f"{contact.name.first_name} "
-            f"{contact.name.nickname} "
-            f"{contact.name.middle_name} "
-            f"{contact.name.last_name}"
-        ).lower()
-        if name in contact_name:
-            matching_contacts.append(contact)
-    return matching_contacts
