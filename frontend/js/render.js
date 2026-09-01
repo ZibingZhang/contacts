@@ -183,12 +183,23 @@ export function renderPhoneSection(contact) {
   return section("Phone Numbers", rows);
 }
 
+function createLink(href, text, { external = false } = {}) {
+  const link = document.createElement("a");
+  link.href = href;
+  link.textContent = text;
+  if (external) {
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+  }
+  return link;
+}
+
 export function renderEmailSection(contact) {
   if (!contact.email_addresses || !contact.email_addresses.length) {
     return null;
   }
   const rows = contact.email_addresses.map((email) =>
-    fieldRow(email.label || "Email", email.address)
+    fieldRow(email.label || "Email", createLink(`mailto:${email.address}`, email.address))
   );
   return section("Email Addresses", rows);
 }
@@ -263,9 +274,21 @@ export function renderSocialSection(contact) {
     rows.push(fieldRow("Game Center", gameCenter.username));
   }
   if (instagram) {
-    let value = instagram.username;
+    const value = document.createElement("span");
+    value.appendChild(
+      createLink(`https://www.instagram.com/${instagram.username}`, instagram.username, { external: true })
+    );
     if (instagram.finsta_usernames && instagram.finsta_usernames.length) {
-      value += ` (finsta: ${instagram.finsta_usernames.join(", ")})`;
+      value.append(" (finsta: ");
+      instagram.finsta_usernames.forEach((username, index) => {
+        if (index > 0) {
+          value.append(", ");
+        }
+        value.appendChild(
+          createLink(`https://www.instagram.com/${username}`, username, { external: true })
+        );
+      });
+      value.append(")");
     }
     rows.push(fieldRow("Instagram", value));
   }
