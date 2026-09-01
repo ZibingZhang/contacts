@@ -31,12 +31,23 @@ let selectedTags = new Set();
 let currentContacts = [];
 let selectedContactId = null;
 
+// Folds a string for accent-insensitive matching: NFKD unifies compatibility
+// variants (fullwidth forms, ligatures, etc.) and splits accented letters
+// into base + combining marks, which are then stripped, e.g. "Jöran" ->
+// "joran" so it matches a plain "Joran" query.
+function normalizeForSearch(text) {
+  return text
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 function contactSearchText(contact) {
   const parts = [buildDisplayName(contact.name)];
   if (contact.name && contact.name.chinese_name) {
     parts.push(contact.name.chinese_name);
   }
-  return parts.join(" ").toLowerCase();
+  return normalizeForSearch(parts.join(" "));
 }
 
 // Score tiers, spaced far enough apart that a higher tier always outranks
@@ -157,7 +168,7 @@ function scoreContact(contact, query, tokens) {
 // "audrey wong" both match. Exact and word-boundary matches are scored above
 // loose subsequence matches, and non-matching contacts are filtered out.
 function filterContacts(contacts, query) {
-  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedQuery = normalizeForSearch(query.trim());
   const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
   if (!tokens.length) {
     return [...contacts].sort(compareByName);
