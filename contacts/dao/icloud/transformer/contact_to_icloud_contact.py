@@ -60,6 +60,7 @@ def contact_to_icloud_contact(contact: model.Contact) -> icloud.model.ICloudCont
     if (
         contact.dated
         or contact.education
+        or contact.favorite
         or contact.friends_friend
         or contact.name.chinese_name
         or contact.notes

@@ -125,7 +125,7 @@ def _expect_high_school(
         contact.education.high_school = model.HighSchool(
             name=high_school_name, graduation_year=graduation_year
         )
-    elif contact.education.high_school.name == high_school_name is None:
+    elif contact.education.high_school.name != high_school_name:
         LOG.warn(f"{contact_name} high school is not {high_school_name}")
     elif graduation_year is not None:
         if contact.education.high_school.graduation_year is None:

@@ -67,7 +67,7 @@ class ICloudDao:
             groups_file_path = os.path.join(
                 constant.CACHE_DIRECTORY, constant.ICLOUD_GROUPS_FILE
             )
-            if not os.path.isfile(contacts_file_path):
+            if not os.path.isfile(groups_file_path):
                 raise ValueError(f"Groups file does not exist, {groups_file_path}")
 
             icloud_contacts = file_io_utils.read_json_array_as_dataclass_objects(

@@ -145,9 +145,6 @@ def _transform_social_profiles(
             case "GAMECENTER":
                 if icloud_profile.user is None:
                     raise ValueError("Missing username for Game Center profile")
-                social_profiles.instagram = model.InstagramProfile(
-                    username=icloud_profile.user
-                )
                 social_profiles.game_center = model.GameCenterProfile(
                     link=icloud_profile.field, username=icloud_profile.user
                 )

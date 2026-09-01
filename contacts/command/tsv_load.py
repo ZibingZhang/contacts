@@ -59,6 +59,8 @@ def run(write: bool) -> None:
 
             contact_id = int(values[0])
 
+            if contact_id not in contacts:
+                raise ValueError(f"Unknown contact id {contact_id}")
             contact = contacts[contact_id]
             original_contact = copy.deepcopy(contact)
             _update_contact_properties(contact, properties[1:], values[1:])

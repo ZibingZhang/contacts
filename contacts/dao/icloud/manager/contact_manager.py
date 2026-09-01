@@ -167,7 +167,7 @@ class ICloudContactManager:
         for group in raw_groups:
             try:
                 del group["headerPositions"]["#"]
-            except KeyError:
+            except (KeyError, TypeError):
                 pass
         groups = [icloud.model.ICloudGroup.from_dict(group) for group in raw_groups]
 

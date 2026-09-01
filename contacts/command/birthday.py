@@ -31,6 +31,9 @@ def run(*, days: int) -> None:
             if birthday >= min_day_int or birthday <= max_day_int:
                 contacts.append(contact)
 
+    if not contacts:
+        return
+
     max_name_length = max(
         1 + len(contact.name.first_name or "") + len(contact.name.last_name or "")
         for contact in contacts

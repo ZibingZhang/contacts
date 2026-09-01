@@ -40,5 +40,4 @@ def _add_tags_to_contact(contacts: Sequence[model.Contact], tags: list[str]) -> 
         if input_utils.yes_no_input("Continue with this set of tags?"):
             contact.tags = tags
             disk_dao.update_contacts([contact])
-
-        break
+            break

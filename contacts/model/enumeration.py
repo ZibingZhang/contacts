@@ -26,6 +26,7 @@ class CountryCode(enum.IntEnum):
     CHILE = 56
     MALAYSIA = 60
     MEXICO = 52
+    RUSSIA = 7
     HONG_KONG = 852
     CHINA = 86
     TAIWAN = 886
@@ -103,6 +104,7 @@ class UniversityName(enum.StrEnum):
     )
     BUCKNELL_UNIVERSITY = "Bucknell University"
     CALIFORNIA_INSTITUTE_OF_TECHNOLOGY = "California Institute of Technology"
+    CALIFORNIA_POLYTECHNIC_STATE_UNIVERSITY = "California Polytechnic State University"
     CARLETON_COLLEGE = "Carleton College"
     CARNEGIE_MELLON_UNIVERSITY = "Carnegie Mellon University"
     CASE_WESTERN_RESERVE_UNIVERSITY = "Case Western Reserve University"
@@ -193,6 +195,7 @@ class UniversityName(enum.StrEnum):
     UNIVERSITY_OF_MIAMI = "University of Miami"
     UNIVERSITY_OF_MICHIGAN = "University of Michigan"
     UNIVERSITY_OF_NEW_HAMPSHIRE = "University of New Hampshire"
+    UNIVERSITY_OF_NOTRE_DAME = "University of Notre Dame"
     UNIVERSITY_OF_PENNSYLVANIA = "University of Pennsylvania"
     UNIVERSITY_OF_RHODE_ISLAND = "University of Rhode Island"
     UNIVERSITY_OF_RICHMOND = "University of Richmond"

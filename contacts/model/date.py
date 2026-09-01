@@ -1,4 +1,5 @@
 """The model for a dates."""
+
 from __future__ import annotations
 
 import dataclasses

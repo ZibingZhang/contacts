@@ -588,6 +588,8 @@ class ICloudSession(requests.Session):
 
             if reason:
                 self._raise_error(code, reason)
+            elif not response.ok:
+                self._raise_error(response.status_code, response.reason)
 
         return response
 
