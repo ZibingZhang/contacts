@@ -1,8 +1,40 @@
 #!/bin/bash
 # Starts the backend API and frontend static server using the ports in config.yaml.
+#
+# Usage: ./start.sh [--env dev|prod]
+#   prod (default): production frontend build served via `vite preview`,
+#                    backend without debug mode.
+#   dev:             frontend `vite` dev server (HMR, React StrictMode),
+#                    backend with --debug.
 set -euo pipefail
 
 cd "$(dirname "$0")"
+
+ENV=prod
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --env)
+      ENV="${2:-}"
+      shift 2
+      ;;
+    --env=*)
+      ENV="${1#--env=}"
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+case "$ENV" in
+  dev|prod) ;;
+  *)
+    echo "Invalid --env value: $ENV (expected 'dev' or 'prod')" >&2
+    exit 1
+    ;;
+esac
 
 read_port() {
   python3 -c "
@@ -33,14 +65,24 @@ cat > frontend/.env.local <<EOF
 VITE_API_BASE_URL=http://${BACKEND_HOST}:${BACKEND_PORT}/api
 EOF
 
-python -m contacts serve --host "$BACKEND_HOST" --port "$BACKEND_PORT" &
+BACKEND_ARGS=(--host "$BACKEND_HOST" --port "$BACKEND_PORT")
+if [ "$ENV" = dev ]; then
+  BACKEND_ARGS+=(--debug)
+fi
+
+python -m contacts serve "${BACKEND_ARGS[@]}" &
 BACKEND_PID=$!
 
-(cd frontend && npm run dev -- --port "$FRONTEND_PORT" --strictPort) &
+if [ "$ENV" = dev ]; then
+  (cd frontend && npm run dev -- --port "$FRONTEND_PORT" --strictPort) &
+else
+  (cd frontend && npm run build && npm run preview -- --port "$FRONTEND_PORT" --strictPort) &
+fi
 FRONTEND_PID=$!
 
 trap 'kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null' EXIT INT TERM
 
+echo "Env:      ${ENV}"
 echo "Backend:  http://${BACKEND_HOST}:${BACKEND_PORT}"
 echo "Frontend: http://localhost:${FRONTEND_PORT}"
 

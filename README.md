@@ -8,11 +8,20 @@ A project to help me store and track my contacts.
 ./start.sh
 ```
 
-This starts the Flask API and the Vite dev server for the frontend, using
-the ports in `config.yaml`. It also regenerates `frontend/.env.local` so the
-frontend points at the configured backend port. Then open
-http://localhost:8080/ (or whatever port `frontend.port` is set to) in a
-browser. Ctrl-C stops both processes.
+This starts the Flask API and serves the frontend, using the ports in
+`config.yaml`. It also regenerates `frontend/.env.local` so the frontend
+points at the configured backend port. Then open http://localhost:8080/ (or
+whatever port `frontend.port` is set to) in a browser. Ctrl-C stops both
+processes.
+
+By default this runs in `prod` mode: the frontend is built and served via
+`vite preview`, and the backend runs without `--debug`. Pass `--env dev` to
+instead run the Vite dev server (hot reload, React StrictMode) and the
+backend with `--debug`:
+
+```bash
+./start.sh --env dev
+```
 
 The first time you set this up (or after pulling changes that touch
 `frontend/package.json`), install dependencies once:
