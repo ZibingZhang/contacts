@@ -51,7 +51,7 @@ def list_tags() -> list[dict]:
     Returns:
         A list of {"tag": str, "count": int} dicts, sorted by tag name.
     """
-    contacts = disk_dao.read_contacts()
+    contacts = list_contacts()
     tag_counts: collections.Counter[str] = collections.Counter()
     for contact in contacts:
         tag_counts.update(contact.tags or [])
