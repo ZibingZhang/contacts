@@ -22,15 +22,16 @@ export function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-export function buildDisplayName(name: Name | undefined): string {
+export function buildDisplayName(name: Name | undefined, options: { includeNickname?: boolean } = {}): string {
   if (!name) {
     return "";
   }
+  const { includeNickname = true } = options;
 
   const parts: string[] = [];
   if (name.prefix) parts.push(name.prefix);
   if (name.first_name) parts.push(name.first_name);
-  if (name.nickname) parts.push(`"${name.nickname}"`);
+  if (includeNickname && name.nickname) parts.push(`"${name.nickname}"`);
   if (name.middle_name) parts.push(name.middle_name);
   if (name.last_name) parts.push(name.last_name);
 

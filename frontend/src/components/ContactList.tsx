@@ -42,7 +42,7 @@ export function ContactList({ contacts, grouped, selectedContactId, onSelect, li
           onSelect(contact.id);
         }}
       >
-        <div>{buildDisplayName(contact.name) || `Contact ${contact.id}`}</div>
+        <div>{buildDisplayName(contact.name, { includeNickname: false }) || `Contact ${contact.id}`}</div>
       </a>
     );
   }
