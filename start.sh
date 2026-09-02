@@ -18,7 +18,7 @@ BACKEND_HOST=127.0.0.1
 
 kill_port() {
   local pids
-  pids=$(lsof -ti "tcp:$1" 2>/dev/null || true)
+  pids=$(lsof -ti "tcp:$1" -sTCP:LISTEN 2>/dev/null || true)
   if [ -n "$pids" ]; then
     echo "Killing existing process(es) on port $1: $pids"
     kill -9 $pids 2>/dev/null || true
