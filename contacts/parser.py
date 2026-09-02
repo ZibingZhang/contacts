@@ -108,7 +108,7 @@ def _build_serve_command_parser(command_parser: argparse._SubParsersAction) -> N
         "--host", default="127.0.0.1", help="host to bind the server to"
     )
     serve_parser.add_argument(
-        "--port", type=int, default=5000, help="port to bind the server to"
+        "--port", type=int, default=8901, help="port to bind the server to"
     )
     serve_parser.add_argument(
         "--debug",

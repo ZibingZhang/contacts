@@ -10,7 +10,7 @@ A project to help me store and track my contacts.
 
 This starts the Flask API and serves the frontend, using the ports in
 `config.yaml`. It also regenerates `frontend/.env.local` so the frontend
-points at the configured backend port. Then open http://localhost:8080/ (or
+points at the configured backend port. Then open http://localhost:8902/ (or
 whatever port `frontend.port` is set to) in a browser. Ctrl-C stops both
 processes.
 
