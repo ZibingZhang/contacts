@@ -12,11 +12,19 @@ function networkErrorMessage(error: unknown): string {
   return `Could not reach the contacts API at ${apiBaseUrl()} — is \`python -m contacts serve\` running?`;
 }
 
+function paramsFromLocation(): { query: string; tags: Set<string> } {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    query: params.get("q") ?? "",
+    tags: new Set(params.getAll("tag")),
+  };
+}
+
 export function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(() => paramsFromLocation().tags);
+  const [searchQuery, setSearchQuery] = useState(() => paramsFromLocation().query);
   const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
   const [listStatus, setListStatus] = useState<ListStatus>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -56,6 +64,22 @@ export function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (searchQuery) {
+      params.set("q", searchQuery);
+    } else {
+      params.delete("q");
+    }
+    params.delete("tag");
+    for (const tag of selectedTags) {
+      params.append("tag", tag);
+    }
+    const queryString = params.toString();
+    const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", newUrl);
+  }, [searchQuery, selectedTags]);
 
   const tagFilteredContacts = useMemo(
     () => contacts.filter((contact) => contactMatchesTags(contact, selectedTags)),

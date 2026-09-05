@@ -30,6 +30,9 @@ export function TagFilterDropdown({ tags, selectedTags, onToggleTag, onClear }: 
   const visibleTags = query ? tags.filter(({ tag }) => tag.toLowerCase().includes(query)) : tags;
   const emptyMessage = query ? "No matching tags" : "No tags";
 
+  const countByTag = new Map(tags.map(({ tag, count }) => [tag, count]));
+  const selectedTagItems = [...selectedTags].map((tag) => ({ tag, count: countByTag.get(tag) ?? 0 }));
+
   return (
     <div className="dropdown" ref={containerRef}>
       <button
@@ -58,6 +61,25 @@ export function TagFilterDropdown({ tags, selectedTags, onToggleTag, onClear }: 
             onChange={(event) => setTagQuery(event.target.value)}
           />
         </div>
+        {selectedTagItems.length > 0 && (
+          <>
+            <div id="tag-filter-selected" className="px-1 py-1">
+              {selectedTagItems.map(({ tag, count }) => (
+                <label className="tag-filter-item dropdown-item" key={`selected-${tag}`}>
+                  <input
+                    type="checkbox"
+                    className="form-check-input mt-0"
+                    checked
+                    onChange={() => onToggleTag(tag)}
+                  />
+                  <span className="tag-filter-label">{tag}</span>
+                  <span className="badge text-bg-light border text-secondary">{count}</span>
+                </label>
+              ))}
+            </div>
+            <div className="dropdown-divider" />
+          </>
+        )}
         <div id="tag-filter-options" className="px-1 py-1">
           {visibleTags.length === 0 ? (
             <div className="text-secondary small px-2 py-1">{emptyMessage}</div>
