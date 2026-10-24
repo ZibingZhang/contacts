@@ -74,6 +74,49 @@ def test_list_tags(client) -> None:
     }
 
 
+def test_batch_add_tags(client, monkeypatch) -> None:
+    written = []
+    monkeypatch.setattr(service.disk_dao, "update_contacts", written.append)
+
+    response = client.post("/api/contacts/batch/tags", json={"contact_ids": [1, 2], "tags": ["C"]})
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert [contact["tags"] for contact in body["contacts"]] == [["A", "C"], ["A", "B", "C"]]
+    assert body["tags"] == [
+        {"tag": "A", "count": 2},
+        {"tag": "B", "count": 1},
+        {"tag": "C", "count": 2},
+    ]
+    assert len(written) == 1
+
+
+def test_batch_add_tags_missing_contact(client) -> None:
+    response = client.post("/api/contacts/batch/tags", json={"contact_ids": [999], "tags": ["C"]})
+
+    assert response.status_code == 404
+    assert response.get_json()["error"]["code"] == "not_found"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"contact_ids": [], "tags": ["C"]},
+        {"contact_ids": ["1"], "tags": ["C"]},
+        {"tags": ["C"]},
+        {"contact_ids": [1], "tags": []},
+        {"contact_ids": [1], "tags": [""]},
+        {"contact_ids": [1], "tags": [123]},
+        {"contact_ids": [1]},
+    ],
+)
+def test_batch_add_tags_invalid_request(client, body) -> None:
+    response = client.post("/api/contacts/batch/tags", json=body)
+
+    assert response.status_code == 400
+    assert response.get_json()["error"]["code"] == "invalid_request"
+
+
 def test_cors_header_present(client) -> None:
     response = client.get("/api/health", headers={"Origin": "http://localhost:5173"})
 

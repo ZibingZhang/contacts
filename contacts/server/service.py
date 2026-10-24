@@ -1,4 +1,4 @@
-"""Read-only query logic backing the HTTP API."""
+"""Query and update logic backing the HTTP API."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import collections
 
 from contacts import model
 from contacts.dao import disk_dao
+from contacts.server import errors
 from contacts.utils import contact_utils
 
 _contacts_cache: list[model.DiskContact] | None = None
@@ -60,3 +61,36 @@ def list_tags() -> list[dict]:
         {"tag": tag, "count": tag_counts[tag]}
         for tag in contact_utils.extract_tags(contacts)
     ]
+
+
+def add_tags_to_contacts(
+    contact_ids: list[int], tags: list[str]
+) -> list[model.DiskContact]:
+    """Add tags to a batch of contacts, unioning with each contact's existing tags.
+
+    Args:
+        contact_ids: The ids of the contacts to update.
+        tags: The tags to add to each contact.
+
+    Returns:
+        The updated contacts, in the order given by contact_ids.
+
+    Raises:
+        errors.NotFoundError: If any of the contact_ids do not exist.
+    """
+    contacts_by_id = {contact.id: contact for contact in list_contacts()}
+
+    missing_ids = [
+        contact_id for contact_id in contact_ids if contact_id not in contacts_by_id
+    ]
+    if missing_ids:
+        raise errors.NotFoundError(f"Contact(s) not found: {missing_ids}")
+
+    updated_contacts = [contacts_by_id[contact_id] for contact_id in contact_ids]
+    for contact in updated_contacts:
+        contact.tags = (contact.tags or []) + tags
+
+    disk_dao.update_contacts(updated_contacts)
+    invalidate_contacts_cache()
+
+    return updated_contacts

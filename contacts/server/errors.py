@@ -22,6 +22,11 @@ class NotFoundError(ApiError):
     code = "not_found"
 
 
+class ValidationError(ApiError):
+    status_code = 400
+    code = "invalid_request"
+
+
 def register_error_handlers(app: Flask) -> None:
     """Register handlers that turn errors into a consistent JSON envelope.
 

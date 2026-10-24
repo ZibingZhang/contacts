@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchContacts, fetchTags, apiBaseUrl, ApiError } from "./api";
+import { fetchContacts, fetchTags, batchAddTags, apiBaseUrl, ApiError } from "./api";
 import type { Contact, TagCount } from "./types";
 import { filterContacts, contactMatchesTags, contactLetter } from "./search";
 import { Sidebar, type ListStatus } from "./components/Sidebar";
 import { ContactDetail } from "./components/ContactDetail";
+import { BatchTagModal } from "./components/BatchTagModal";
 
 function networkErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -28,6 +29,9 @@ export function App() {
   const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
   const [listStatus, setListStatus] = useState<ListStatus>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showBatchTagModal, setShowBatchTagModal] = useState(false);
 
   const listRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -194,6 +198,41 @@ export function App() {
     });
   }
 
+  function toggleSelectionMode() {
+    setSelectionMode((prev) => {
+      if (prev) {
+        setSelectedIds(new Set());
+      }
+      return !prev;
+    });
+  }
+
+  function toggleContactSelection(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(visibleContacts.map((contact) => contact.id)));
+  }
+
+  async function handleBatchAddTags(newTags: string[]) {
+    const response = await batchAddTags([...selectedIds], newTags);
+    const updatedById = new Map(response.contacts.map((contact) => [contact.id, contact]));
+    setContacts((prev) => prev.map((contact) => updatedById.get(contact.id) ?? contact));
+    setTags(response.tags);
+    setShowBatchTagModal(false);
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+  }
+
   return (
     <div className="d-flex vh-100">
       <Sidebar
@@ -213,6 +252,13 @@ export function App() {
         onJumpToLetter={jumpToLetter}
         listRef={listRef}
         scrollContainerRef={scrollContainerRef}
+        selectionMode={selectionMode}
+        onToggleSelectionMode={toggleSelectionMode}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleContactSelection}
+        onSelectAllVisible={selectAllVisible}
+        onClearSelection={() => setSelectedIds(new Set())}
+        onAddTags={() => setShowBatchTagModal(true)}
       />
 
       <main id="contact-detail" className="flex-grow-1 overflow-auto p-4">
@@ -226,6 +272,15 @@ export function App() {
           <div className="text-secondary">Select a contact to see their details.</div>
         )}
       </main>
+
+      {showBatchTagModal && (
+        <BatchTagModal
+          contactCount={selectedIds.size}
+          allTags={tags}
+          onCancel={() => setShowBatchTagModal(false)}
+          onSubmit={handleBatchAddTags}
+        />
+      )}
     </div>
   );
 }

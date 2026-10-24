@@ -24,6 +24,13 @@ interface SidebarProps {
   onJumpToLetter: (letter: string) => void;
   listRef: RefObject<HTMLDivElement | null>;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
+  selectionMode: boolean;
+  onToggleSelectionMode: () => void;
+  selectedIds: Set<number>;
+  onToggleSelect: (id: number) => void;
+  onSelectAllVisible: () => void;
+  onClearSelection: () => void;
+  onAddTags: () => void;
 }
 
 export function Sidebar({
@@ -43,13 +50,58 @@ export function Sidebar({
   onJumpToLetter,
   listRef,
   scrollContainerRef,
+  selectionMode,
+  onToggleSelectionMode,
+  selectedIds,
+  onToggleSelect,
+  onSelectAllVisible,
+  onClearSelection,
+  onAddTags,
 }: SidebarProps) {
   return (
     <nav id="contact-nav" className="d-flex flex-column border-end flex-shrink-0">
-      <div className="p-2 border-bottom">
-        <SearchBar value={searchQuery} onChange={onSearchChange} />
-        <TagFilterDropdown tags={tags} selectedTags={selectedTags} onToggleTag={onToggleTag} onClear={onClearTags} />
+      <div className="p-2 border-bottom d-flex align-items-start gap-2">
+        <div className="flex-grow-1">
+          <SearchBar value={searchQuery} onChange={onSearchChange} />
+          <TagFilterDropdown tags={tags} selectedTags={selectedTags} onToggleTag={onToggleTag} onClear={onClearTags} />
+        </div>
+        <button
+          id="selection-mode-toggle"
+          type="button"
+          className={`btn btn-sm${selectionMode ? " btn-secondary" : " btn-outline-secondary"}`}
+          aria-pressed={selectionMode}
+          onClick={onToggleSelectionMode}
+        >
+          {selectionMode ? "Done" : "Select"}
+        </button>
       </div>
+
+      {selectionMode && (
+        <div id="selection-toolbar" className="px-2 py-2 border-bottom d-flex align-items-center gap-2 flex-wrap">
+          <span className="small text-secondary">
+            {selectedIds.size} selected
+          </span>
+          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onSelectAllVisible}>
+            Select all
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary"
+            onClick={onClearSelection}
+            disabled={selectedIds.size === 0}
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-primary ms-auto"
+            onClick={onAddTags}
+            disabled={selectedIds.size === 0}
+          >
+            Add tags…
+          </button>
+        </div>
+      )}
 
       <div id="list-status" className="px-2 pt-2">
         {listStatus === "loading" && <div className="text-secondary small p-2">Loading…</div>}
@@ -67,6 +119,9 @@ export function Sidebar({
           selectedContactId={selectedContactId}
           onSelect={onSelectContact}
           listRef={listRef}
+          selectionMode={selectionMode}
+          selectedIds={selectedIds}
+          onToggleSelect={onToggleSelect}
         />
         <AlphaIndex hidden={!grouped} lettersPresent={lettersPresent} onJumpToLetter={onJumpToLetter} />
       </div>

@@ -86,3 +86,41 @@ def test_list_tags(monkeypatch, contacts) -> None:
     monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
 
     assert service.list_tags() == [{"tag": "A", "count": 2}, {"tag": "B", "count": 1}]
+
+
+def test_add_tags_to_contacts_unions_with_existing_tags(monkeypatch, contacts) -> None:
+    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+    written = []
+    monkeypatch.setattr(service.disk_dao, "update_contacts", written.append)
+
+    updated = service.add_tags_to_contacts([1, 3], ["B", "C"])
+
+    assert [contact.tags for contact in updated] == [["A", "B", "C"], ["B", "C"]]
+    assert len(written) == 1
+
+
+def test_add_tags_to_contacts_invalidates_cache(monkeypatch, contacts) -> None:
+    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+
+    service.list_contacts()
+    service.add_tags_to_contacts([1], ["C"])
+
+    read_calls = 0
+
+    def read_contacts():
+        nonlocal read_calls
+        read_calls += 1
+        return contacts
+
+    monkeypatch.setattr(service.disk_dao, "read_contacts", read_contacts)
+    service.list_contacts()
+
+    assert read_calls == 1
+
+
+def test_add_tags_to_contacts_missing_id_raises(monkeypatch, contacts) -> None:
+    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+
+    with pytest.raises(service.errors.NotFoundError):
+        service.add_tags_to_contacts([1, 999], ["C"])

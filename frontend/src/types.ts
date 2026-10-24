@@ -92,3 +92,8 @@ export interface ContactsResponse {
 export interface TagsResponse {
   tags: TagCount[];
 }
+
+export interface BatchAddTagsResponse {
+  contacts: Contact[];
+  tags: TagCount[];
+}

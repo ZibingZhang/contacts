@@ -1,4 +1,4 @@
-import type { ContactsResponse, TagsResponse } from "./types";
+import type { BatchAddTagsResponse, ContactsResponse, TagsResponse } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 
@@ -14,9 +14,7 @@ export class ApiError extends Error {
   }
 }
 
-async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(API_BASE_URL + path);
-
+async function readJsonResponse<T>(response: Response): Promise<T> {
   let body: { error?: { message?: string; code?: string } } | null;
   try {
     body = await response.json();
@@ -35,12 +33,30 @@ async function apiGet<T>(path: string): Promise<T> {
   return body as T;
 }
 
+async function apiGet<T>(path: string): Promise<T> {
+  const response = await fetch(API_BASE_URL + path);
+  return readJsonResponse<T>(response);
+}
+
+async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(API_BASE_URL + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJsonResponse<T>(response);
+}
+
 export function fetchContacts(): Promise<ContactsResponse> {
   return apiGet<ContactsResponse>("/contacts");
 }
 
 export function fetchTags(): Promise<TagsResponse> {
   return apiGet<TagsResponse>("/tags");
+}
+
+export function batchAddTags(contactIds: number[], tags: string[]): Promise<BatchAddTagsResponse> {
+  return apiPost<BatchAddTagsResponse>("/contacts/batch/tags", { contact_ids: contactIds, tags });
 }
 
 export function apiBaseUrl(): string {
