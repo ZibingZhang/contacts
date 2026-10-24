@@ -16,7 +16,6 @@ tmp
 .idea/
 
 # Project specific files
-*.json
 !new-contacts-template.json
 *.tsv
 ./cache/
