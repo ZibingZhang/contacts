@@ -134,6 +134,66 @@ def search_contacts(
     return matching_contacts
 
 
+def remove_unsynced_fields(contact: model.DiskContact) -> None:
+    """Strips fields that exist locally but should never be pushed to iCloud.
+
+    Mutates the contact in place; does not persist the change to disk.
+
+    Args:
+        contact: The contact to strip fields from.
+    """
+    try:
+        del contact.name.deadname  # type: ignore
+    except AttributeError:
+        pass
+    try:
+        del contact.social_profiles.instagram.finsta_usernames  # type: ignore
+    except AttributeError:
+        pass
+
+
+def normalize_push_diff(diff: dict) -> dict:
+    """Strips disk-only bookkeeping fields that always show up as noise when
+    diffing an iCloud contact against its disk counterpart.
+
+    Args:
+        diff: A diff of (icloud_contact, disk_contact) from dataclasses_utils.diff.
+
+    Returns:
+        The diff with disk-only fields (id, mtime) removed from any $insert.
+    """
+    if diff.get("$insert") is not None:
+        del diff["$insert"]["id"]
+        del diff["$insert"]["mtime"]
+        if not diff["$insert"]:
+            del diff["$insert"]
+    return diff
+
+
+def only_etag_updated(diff: dict) -> bool:
+    """Returns True if a contact diff changes nothing but the iCloud etag.
+
+    Args:
+        diff: A diff of two contacts from dataclasses_utils.diff.
+
+    Returns:
+        True if the only change is to icloud.etag.
+    """
+    if set(diff.keys()) != {"$update"}:
+        return False
+    update = diff["$update"]
+    if set(update.keys()) != {"icloud"}:
+        return False
+    icloud_diff = update["icloud"]
+    if set(icloud_diff.keys()) == {"$update"}:
+        icloud_update = icloud_diff["$update"]
+        return set(icloud_update.keys()) == {"etag"}
+    if set(icloud_diff.keys()) == {"$insert"}:
+        icloud_insert = icloud_diff["$insert"]
+        return set(icloud_insert.keys()) == {"etag"}
+    return False
+
+
 def extract_tags(contacts: Sequence[model.Contact]) -> list[str]:
     """Extract all tags from the contacts.
 

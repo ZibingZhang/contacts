@@ -8,6 +8,7 @@ from typing import cast
 from contacts import model
 from contacts.dao import disk_dao, icloud_dao
 from contacts.utils import (
+    contact_utils,
     dataclasses_utils,
     input_utils,
     json_utils,
@@ -55,7 +56,7 @@ def run(*, cached: bool, ignore_updates: bool = False) -> None:
         diff = dataclasses_utils.diff(disk_contact, updated_contact)
 
         if diff:
-            if _only_etag_updated(diff):
+            if contact_utils.only_etag_updated(diff):
                 updated_contact.mtime = time.time()
                 disk_dao.update_contacts([updated_contact])
                 continue
@@ -72,19 +73,3 @@ def run(*, cached: bool, ignore_updates: bool = False) -> None:
             if input_utils.yes_no_input("Accept update?"):
                 updated_contact.mtime = time.time()
                 disk_dao.update_contacts([updated_contact])
-
-
-def _only_etag_updated(diff: dict) -> bool:
-    if set(diff.keys()) != {"$update"}:
-        return False
-    update = diff["$update"]
-    if set(update.keys()) != {"icloud"}:
-        return False
-    icloud_diff = update["icloud"]
-    if set(icloud_diff.keys()) == {"$update"}:
-        icloud_update = icloud_diff["$update"]
-        return set(icloud_update.keys()) == {"etag"}
-    if set(icloud_diff.keys()) == {"$insert"}:
-        icloud_insert = icloud_diff["$insert"]
-        return set(icloud_insert.keys()) == {"etag"}
-    return False

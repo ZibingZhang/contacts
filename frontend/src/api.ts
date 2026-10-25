@@ -1,4 +1,4 @@
-import type { BatchAddTagsResponse, ContactsResponse, TagsResponse } from "./types";
+import type { BatchAddTagsResponse, ContactsResponse, SyncResult, TagsResponse } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 
@@ -57,6 +57,44 @@ export function fetchTags(): Promise<TagsResponse> {
 
 export function batchAddTags(contactIds: number[], tags: string[]): Promise<BatchAddTagsResponse> {
   return apiPost<BatchAddTagsResponse>("/contacts/batch/tags", { contact_ids: contactIds, tags });
+}
+
+export function startSync(): Promise<SyncResult> {
+  return apiPost<SyncResult>("/sync", {});
+}
+
+export function submitSyncDevice(deviceIndex: number): Promise<SyncResult> {
+  return apiPost<SyncResult>("/sync/device", { device_index: deviceIndex });
+}
+
+export function submitSyncCode(code: string): Promise<SyncResult> {
+  return apiPost<SyncResult>("/sync/code", { code });
+}
+
+export function applySyncReview(createIcloudIds: string[], updateIcloudIds: string[]): Promise<SyncResult> {
+  return apiPost<SyncResult>("/sync/apply", {
+    create_icloud_ids: createIcloudIds,
+    update_icloud_ids: updateIcloudIds,
+  });
+}
+
+export function startPush(): Promise<SyncResult> {
+  return apiPost<SyncResult>("/push", {});
+}
+
+export function submitPushDevice(deviceIndex: number): Promise<SyncResult> {
+  return apiPost<SyncResult>("/push/device", { device_index: deviceIndex });
+}
+
+export function submitPushCode(code: string): Promise<SyncResult> {
+  return apiPost<SyncResult>("/push/code", { code });
+}
+
+export function applyPushReview(createIcloudIds: string[], updateIcloudIds: string[]): Promise<SyncResult> {
+  return apiPost<SyncResult>("/push/apply", {
+    create_icloud_ids: createIcloudIds,
+    update_icloud_ids: updateIcloudIds,
+  });
 }
 
 export function apiBaseUrl(): string {

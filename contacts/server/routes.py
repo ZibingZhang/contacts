@@ -14,6 +14,93 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@bp.post("/sync")
+def sync():
+    result = service.start_sync_from_icloud()
+    return jsonify(result)
+
+
+@bp.post("/sync/device")
+def sync_device():
+    body = request.get_json(silent=True) or {}
+    device_index = body.get("device_index")
+
+    if not isinstance(device_index, int) or isinstance(device_index, bool):
+        raise errors.ValidationError("device_index must be an integer")
+
+    result = service.submit_sync_device(device_index)
+    return jsonify(result)
+
+
+@bp.post("/sync/code")
+def sync_code():
+    body = request.get_json(silent=True) or {}
+    code = body.get("code")
+
+    if not isinstance(code, str) or not code.strip():
+        raise errors.ValidationError("code must be a non-empty string")
+
+    result = service.submit_sync_code(code.strip())
+    return jsonify(result)
+
+
+@bp.post("/sync/apply")
+def sync_apply():
+    body = request.get_json(silent=True) or {}
+    create_icloud_ids = _validate_icloud_id_list(body, "create_icloud_ids")
+    update_icloud_ids = _validate_icloud_id_list(body, "update_icloud_ids")
+
+    result = service.apply_icloud_sync(create_icloud_ids, update_icloud_ids)
+    return jsonify(result)
+
+
+@bp.post("/push")
+def push():
+    result = service.start_push_to_icloud()
+    return jsonify(result)
+
+
+@bp.post("/push/device")
+def push_device():
+    body = request.get_json(silent=True) or {}
+    device_index = body.get("device_index")
+
+    if not isinstance(device_index, int) or isinstance(device_index, bool):
+        raise errors.ValidationError("device_index must be an integer")
+
+    result = service.submit_push_device(device_index)
+    return jsonify(result)
+
+
+@bp.post("/push/code")
+def push_code():
+    body = request.get_json(silent=True) or {}
+    code = body.get("code")
+
+    if not isinstance(code, str) or not code.strip():
+        raise errors.ValidationError("code must be a non-empty string")
+
+    result = service.submit_push_code(code.strip())
+    return jsonify(result)
+
+
+@bp.post("/push/apply")
+def push_apply():
+    body = request.get_json(silent=True) or {}
+    create_icloud_ids = _validate_icloud_id_list(body, "create_icloud_ids")
+    update_icloud_ids = _validate_icloud_id_list(body, "update_icloud_ids")
+
+    result = service.apply_icloud_push(create_icloud_ids, update_icloud_ids)
+    return jsonify(result)
+
+
+def _validate_icloud_id_list(body: dict, field_name: str) -> list[str]:
+    value = body.get(field_name, [])
+    if not isinstance(value, list) or not all(isinstance(i, str) for i in value):
+        raise errors.ValidationError(f"{field_name} must be a list of strings")
+    return value
+
+
 @bp.get("/contacts")
 def list_contacts():
     contacts = service.list_contacts()

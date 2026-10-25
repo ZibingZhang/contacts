@@ -97,3 +97,39 @@ export interface BatchAddTagsResponse {
   contacts: Contact[];
   tags: TagCount[];
 }
+
+export type SyncVerificationKind = "code" | "device_and_code";
+
+export interface SyncComplete {
+  status: "complete";
+  created: number;
+  updated: number;
+}
+
+export interface SyncRequiresVerification {
+  status: "requires_verification";
+  verification_kind: SyncVerificationKind;
+  devices: string[];
+}
+
+// A contact fresh from iCloud, not yet created on disk, so it has no `id` yet.
+export type UnsavedContact = Omit<Contact, "id"> & { id?: number };
+
+export interface SyncReviewCreatedItem {
+  icloud_id: string;
+  contact: UnsavedContact;
+}
+
+export interface SyncReviewUpdatedItem {
+  icloud_id: string;
+  before: Contact;
+  after: Contact;
+}
+
+export interface SyncReview {
+  status: "review";
+  created: SyncReviewCreatedItem[];
+  updated: SyncReviewUpdatedItem[];
+}
+
+export type SyncResult = SyncComplete | SyncRequiresVerification | SyncReview;

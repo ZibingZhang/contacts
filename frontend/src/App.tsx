@@ -1,10 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchContacts, fetchTags, batchAddTags, apiBaseUrl, ApiError } from "./api";
-import type { Contact, TagCount } from "./types";
+import {
+  fetchContacts,
+  fetchTags,
+  batchAddTags,
+  startSync,
+  submitSyncDevice,
+  submitSyncCode,
+  applySyncReview,
+  startPush,
+  submitPushDevice,
+  submitPushCode,
+  applyPushReview,
+  apiBaseUrl,
+  ApiError,
+} from "./api";
+import type { Contact, TagCount, SyncRequiresVerification, SyncReview, SyncResult } from "./types";
 import { filterContacts, contactMatchesTags, contactLetter } from "./search";
 import { Sidebar, type ListStatus } from "./components/Sidebar";
 import { ContactDetail } from "./components/ContactDetail";
 import { BatchTagModal } from "./components/BatchTagModal";
+import { SyncVerificationModal } from "./components/SyncVerificationModal";
+import { SyncReviewModal, type SyncDirection } from "./components/SyncReviewModal";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
@@ -24,6 +40,18 @@ function paramsFromLocation(): { query: string; tags: Set<string> } {
   };
 }
 
+interface SyncApi {
+  start: () => Promise<SyncResult>;
+  submitDevice: (deviceIndex: number) => Promise<SyncResult>;
+  submitCode: (code: string) => Promise<SyncResult>;
+  applyReview: (createIcloudIds: string[], updateIcloudIds: string[]) => Promise<SyncResult>;
+}
+
+const SYNC_API: Record<SyncDirection, SyncApi> = {
+  pull: { start: startSync, submitDevice: submitSyncDevice, submitCode: submitSyncCode, applyReview: applySyncReview },
+  push: { start: startPush, submitDevice: submitPushDevice, submitCode: submitPushCode, applyReview: applyPushReview },
+};
+
 export function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
@@ -35,6 +63,12 @@ export function App() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBatchTagModal, setShowBatchTagModal] = useState(false);
+  const [syncDirection, setSyncDirection] = useState<SyncDirection | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncChallenge, setSyncChallenge] = useState<SyncRequiresVerification | null>(null);
+  const [syncReview, setSyncReview] = useState<SyncReview | null>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -226,6 +260,73 @@ export function App() {
     setSelectedIds(new Set(visibleContacts.map((contact) => contact.id)));
   }
 
+  async function finishSync(direction: SyncDirection, result: SyncResult) {
+    if (result.status === "requires_verification") {
+      setSyncChallenge(result);
+      return;
+    }
+    if (result.status === "review") {
+      setSyncChallenge(null);
+      setSyncReview(result);
+      return;
+    }
+    setSyncChallenge(null);
+    setSyncReview(null);
+    setSyncing(false);
+    const [contactsData, tagsData] = await Promise.all([fetchContacts(), fetchTags()]);
+    setContacts(contactsData.contacts);
+    setTags(tagsData.tags);
+    const verb = direction === "pull" ? "Pulled from" : "Pushed to";
+    setSyncMessage(
+      result.created === 0 && result.updated === 0
+        ? "Already up to date with iCloud."
+        : `${verb} iCloud: ${result.created} created, ${result.updated} updated.`
+    );
+  }
+
+  async function handleStartSync(direction: SyncDirection) {
+    setSyncDirection(direction);
+    setSyncing(true);
+    setSyncError(null);
+    setSyncMessage(null);
+    try {
+      await finishSync(direction, await SYNC_API[direction].start());
+    } catch (error) {
+      setSyncError(networkErrorMessage(error));
+      setSyncing(false);
+    }
+  }
+
+  async function handleSyncSelectDevice(deviceIndex: number) {
+    if (!syncDirection) return;
+    const result = await SYNC_API[syncDirection].submitDevice(deviceIndex);
+    if (result.status === "requires_verification") {
+      setSyncChallenge(result);
+    }
+  }
+
+  async function handleSyncSubmitCode(code: string) {
+    if (!syncDirection) return;
+    await finishSync(syncDirection, await SYNC_API[syncDirection].submitCode(code));
+  }
+
+  function handleSyncCancel() {
+    setSyncChallenge(null);
+    setSyncing(false);
+    setSyncDirection(null);
+  }
+
+  async function handleSyncReviewApply(createIcloudIds: string[], updateIcloudIds: string[]) {
+    if (!syncDirection) return;
+    await finishSync(syncDirection, await SYNC_API[syncDirection].applyReview(createIcloudIds, updateIcloudIds));
+  }
+
+  function handleSyncReviewCancel() {
+    setSyncReview(null);
+    setSyncing(false);
+    setSyncDirection(null);
+  }
+
   async function handleBatchAddTags(newTags: string[]) {
     const response = await batchAddTags([...selectedIds], newTags);
     const updatedById = new Map(response.contacts.map((contact) => [contact.id, contact]));
@@ -262,6 +363,12 @@ export function App() {
         onSelectAllVisible={selectAllVisible}
         onClearSelection={() => setSelectedIds(new Set())}
         onAddTags={() => setShowBatchTagModal(true)}
+        syncing={syncing}
+        syncDirection={syncDirection}
+        syncMessage={syncMessage}
+        syncError={syncError}
+        onPull={() => handleStartSync("pull")}
+        onPush={() => handleStartSync("push")}
       />
 
       <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", p: 4 }}>
@@ -280,6 +387,24 @@ export function App() {
           allTags={tags}
           onCancel={() => setShowBatchTagModal(false)}
           onSubmit={handleBatchAddTags}
+        />
+      )}
+
+      {syncChallenge && (
+        <SyncVerificationModal
+          challenge={syncChallenge}
+          onCancel={handleSyncCancel}
+          onSelectDevice={handleSyncSelectDevice}
+          onSubmitCode={handleSyncSubmitCode}
+        />
+      )}
+
+      {syncReview && syncDirection && (
+        <SyncReviewModal
+          review={syncReview}
+          direction={syncDirection}
+          onCancel={handleSyncReviewCancel}
+          onApply={handleSyncReviewApply}
         />
       )}
     </Box>

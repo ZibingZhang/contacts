@@ -44,6 +44,44 @@ _USER_AGENT = (
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3.1 Safari/605.1.15"
 )
 
+# Fields masked out of logged request/response bodies -- these are
+# long-lived credentials (unlike the SRP handshake values, which are only
+# useful for the one login attempt they're part of).
+_SENSITIVE_LOG_KEYS = {
+    "password",
+    "trustToken",
+    "trustTokens",
+    "dsWebAuthToken",
+    "securityCode",
+    "verificationCode",
+}
+
+
+def _redact_for_logging(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: ("***" if key in _SENSITIVE_LOG_KEYS else _redact_for_logging(val))
+            for key, val in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_for_logging(item) for item in value]
+    return value
+
+
+def _redact_body_for_logging(data: Any) -> Any:
+    """Best-effort redaction of a request body for logging.
+
+    `data` is usually a `json.dumps(...)`-encoded str; non-JSON/non-str
+    bodies (e.g. the literal "null" used for token validation) are logged
+    as-is since they don't carry structured fields to redact.
+    """
+    if not isinstance(data, (str, bytes)):
+        return data
+    try:
+        return _redact_for_logging(json.loads(data))
+    except (TypeError, ValueError):
+        return data
+
 
 class ICloudSession(requests.Session):
     """iCloud session.
@@ -143,7 +181,7 @@ class ICloudSession(requests.Session):
         request = self.get("%s/listDevices" % self.SETUP_ENDPOINT, params=self.params)
         return request.json().get("devices")
 
-    def _request_2fa_code(self) -> None:
+    def request_2fa_code(self) -> None:
         """Actively push a 2FA notification to trusted devices.
 
         Apple does not automatically push a code for non-browser (API) sessions
@@ -161,12 +199,12 @@ class ICloudSession(requests.Session):
 
     def login(self) -> None:
         if self.requires_2fa:
-            self._request_2fa_code()
+            self.request_2fa_code()
             LOG.info("Two-factor authentication required.")
             code = input(
                 "Enter the code you received of one of your approved devices: "
             )
-            result = self._validate_2fa_code(code)
+            result = self.validate_2fa_code(code)
             LOG.info("Code validation result: %s" % result)
 
             if not result:
@@ -201,13 +239,13 @@ class ICloudSession(requests.Session):
 
             device = input("Which device would you like to use?")
             device = devices[device]
-            if not self._send_verification_code(device):
+            if not self.send_verification_code(device):
                 raise exception.ICloudFailedLoginException(
                     "Failed to send verification code"
                 )
 
             code = input("Please enter validation code")
-            if not self._validate_verification_code(device, code):
+            if not self.validate_verification_code(device, code):
                 raise exception.ICloudFailedLoginException(
                     "Failed to verify verification code"
                 )
@@ -321,8 +359,12 @@ class ICloudSession(requests.Session):
                     headers=headers,
                 )
             except exception.ICloudAPIResponseException as error:
-                msg = "Invalid email/password combination."
-                raise exception.ICloudFailedLoginException(msg, error)
+                # A bare 409 with no error reason means the SRP handshake
+                # succeeded but 2FA/2SA verification is still pending --
+                # not a bad password. Any other error here is a real failure.
+                if not (error.code == 409 and not error.reason):
+                    msg = "Invalid email/password combination."
+                    raise exception.ICloudFailedLoginException(msg, error)
 
             self._authenticate_with_token()
 
@@ -423,7 +465,7 @@ class ICloudSession(requests.Session):
             headers.update(overrides)
         return headers
 
-    def _send_verification_code(self, device: dict) -> bool:
+    def send_verification_code(self, device: dict) -> bool:
         """Requests that a verification code is sent to the given device."""
         data = json.dumps(device)
         request = self.post(
@@ -433,7 +475,7 @@ class ICloudSession(requests.Session):
         )
         return request.json().get("success", False)
 
-    def _validate_verification_code(self, device: dict, code: str) -> bool:
+    def validate_verification_code(self, device: dict, code: str) -> bool:
         """Verifies a verification code received on a trusted device."""
         device.update({"verificationCode": code, "trustBrowser": True})
         data = json.dumps(device)
@@ -454,7 +496,7 @@ class ICloudSession(requests.Session):
 
         return not self.requires_2sa
 
-    def _validate_2fa_code(self, code: str) -> bool:
+    def validate_2fa_code(self, code: str) -> bool:
         """Verifies a verification code received via Apple's 2FA system (HSA2)."""
         data = {"securityCode": {"code": code}}
 
@@ -505,11 +547,15 @@ class ICloudSession(requests.Session):
         if self.password_filter not in request_logger.filters:
             request_logger.addFilter(self.password_filter)
 
-        request_logger.debug("%r %r %s" % (method, url, kwargs.get("data", "")))
+        request_logger.info(
+            "%r %r %s" % (method, url, _redact_body_for_logging(kwargs.get("data", "")))
+        )
 
         has_retried = kwargs.get("retried")
         kwargs.pop("retried", None)
         response = super().request(method, url, **kwargs)
+
+        request_logger.info("-> %s %s" % (response.status_code, response.reason))
 
         content_type = response.headers.get("Content-Type", "").split(";")[0]
         json_mimetypes = ["application/json", "text/json"]
@@ -571,7 +617,7 @@ class ICloudSession(requests.Session):
             request_logger.warning("Failed to parse response with JSON mimetype")
             return response
 
-        request_logger.debug(data)
+        request_logger.info("<- %s" % _redact_for_logging(data))
 
         if isinstance(data, dict):
             reason = data.get("errorMessage")

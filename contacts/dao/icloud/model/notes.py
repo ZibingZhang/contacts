@@ -39,7 +39,12 @@ class Notes(dataclasses_utils.DataClassJsonMixin):
 
     @staticmethod
     def from_string(notes: str) -> Notes:
-        return Notes.from_dict(yaml_utils.load(notes))
+        parsed = yaml_utils.load(notes)
+        if not isinstance(parsed, dict):
+            # Freeform text (not one of this app's YAML key: value notes) --
+            # treat the whole thing as a comment rather than failing to parse.
+            return Notes(comment=notes)
+        return Notes.from_dict(parsed)
 
     @staticmethod
     def to_string(notes: Notes) -> str:

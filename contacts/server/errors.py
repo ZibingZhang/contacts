@@ -27,6 +27,11 @@ class ValidationError(ApiError):
     code = "invalid_request"
 
 
+class SyncError(ApiError):
+    status_code = 502
+    code = "sync_failed"
+
+
 def register_error_handlers(app: Flask) -> None:
     """Register handlers that turn errors into a consistent JSON envelope.
 

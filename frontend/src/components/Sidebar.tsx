@@ -1,11 +1,13 @@
 import type { RefObject } from "react";
 import type { Contact, TagCount } from "../types";
+import type { SyncDirection } from "./SyncReviewModal";
 import { SearchBar } from "./SearchBar";
 import { TagFilterDropdown } from "./TagFilterDropdown";
 import { ContactList } from "./ContactList";
 import { AlphaIndex } from "./AlphaIndex";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import ButtonGroup from "@mui/material/ButtonGroup";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 
@@ -35,6 +37,12 @@ interface SidebarProps {
   onSelectAllVisible: () => void;
   onClearSelection: () => void;
   onAddTags: () => void;
+  syncing: boolean;
+  syncDirection: SyncDirection | null;
+  syncMessage: string | null;
+  syncError: string | null;
+  onPull: () => void;
+  onPush: () => void;
 }
 
 export function Sidebar({
@@ -61,6 +69,12 @@ export function Sidebar({
   onSelectAllVisible,
   onClearSelection,
   onAddTags,
+  syncing,
+  syncDirection,
+  syncMessage,
+  syncError,
+  onPull,
+  onPush,
 }: SidebarProps) {
   return (
     <Box
@@ -89,6 +103,28 @@ export function Sidebar({
           <SearchBar value={searchQuery} onChange={onSearchChange} />
           <TagFilterDropdown tags={tags} selectedTags={selectedTags} onToggleTag={onToggleTag} onClear={onClearTags} />
         </Box>
+        <ButtonGroup
+          id="sync-button-group"
+          size="small"
+          variant="outlined"
+          color="inherit"
+          disabled={syncing}
+        >
+          <Button
+            id="pull-button"
+            onClick={onPull}
+            title="Pull new/changed contacts from iCloud to review here."
+          >
+            {syncing && syncDirection === "pull" ? "Pulling…" : "Pull"}
+          </Button>
+          <Button
+            id="push-button"
+            onClick={onPush}
+            title="Push new/changed local contacts to iCloud to review there."
+          >
+            {syncing && syncDirection === "push" ? "Pushing…" : "Push"}
+          </Button>
+        </ButtonGroup>
         <Button
           id="selection-mode-toggle"
           size="small"
@@ -100,6 +136,12 @@ export function Sidebar({
           {selectionMode ? "Done" : "Select"}
         </Button>
       </Box>
+
+      {(syncMessage || syncError) && (
+        <Box id="sync-status" sx={{ px: 1, pt: 1 }}>
+          <Alert severity={syncError ? "error" : "success"}>{syncError ?? syncMessage}</Alert>
+        </Box>
+      )}
 
       {selectionMode && (
         <Box

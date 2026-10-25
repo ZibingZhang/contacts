@@ -8,6 +8,7 @@ from contacts import command, model
 from contacts.dao import disk_dao, icloud_dao
 from contacts.logger import LOG
 from contacts.utils import (
+    contact_utils,
     dataclasses_utils,
     input_utils,
     json_utils,
@@ -35,7 +36,7 @@ def run(*, force: bool, write: bool) -> None:
     new_contacts = []
     for icloud_id in disk_contact_ids - icloud_contact_ids:
         new_contact = icloud_id_to_disk_contact_map[icloud_id]
-        _remove_unsynced_fields(new_contact)
+        contact_utils.remove_unsynced_fields(new_contact)
 
         print(
             pretty_print_utils.bordered(
@@ -59,11 +60,11 @@ def run(*, force: bool, write: bool) -> None:
     updated_contacts = []
     for icloud_id in disk_contact_ids & icloud_contact_ids:
         disk_contact = icloud_id_to_disk_contact_map[icloud_id]
-        _remove_unsynced_fields(disk_contact)
+        contact_utils.remove_unsynced_fields(disk_contact)
         icloud_contact = icloud_id_to_icloud_contact_map[icloud_id]
 
         diff = dataclasses_utils.diff(icloud_contact, disk_contact)
-        diff = _normalize_diff(diff)
+        diff = contact_utils.normalize_push_diff(diff)
 
         if diff:
             current_contact_display = pretty_print_utils.bordered(
@@ -105,23 +106,3 @@ def run(*, force: bool, write: bool) -> None:
             LOG.info(
                 f"Would have written {len(updated_contacts)} updated contacts to iCloud"
             )
-
-
-def _remove_unsynced_fields(contact: model.DiskContact) -> None:
-    try:
-        del contact.name.deadname  # type: ignore
-    except AttributeError:
-        pass
-    try:
-        del contact.social_profiles.instagram.finsta_usernames  # type: ignore
-    except AttributeError:
-        pass
-
-
-def _normalize_diff(diff: dict) -> dict:
-    if diff.get("$insert") is not None:
-        del diff["$insert"]["id"]
-        del diff["$insert"]["mtime"]
-        if not diff["$insert"]:
-            del diff["$insert"]
-    return diff
