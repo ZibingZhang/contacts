@@ -1,5 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { TagCount } from "../types";
+import IconButton from "@mui/material/IconButton";
+import Badge from "@mui/material/Badge";
+import Popover from "@mui/material/Popover";
+import TextField from "@mui/material/TextField";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
+import Checkbox from "@mui/material/Checkbox";
+import Chip from "@mui/material/Chip";
+import Divider from "@mui/material/Divider";
+import Typography from "@mui/material/Typography";
+import Box from "@mui/material/Box";
+import FilterListIcon from "@mui/icons-material/FilterList";
 
 interface TagFilterDropdownProps {
   tags: TagCount[];
@@ -9,22 +23,14 @@ interface TagFilterDropdownProps {
 }
 
 export function TagFilterDropdown({ tags, selectedTags, onToggleTag, onClear }: TagFilterDropdownProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [tagQuery, setTagQuery] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
+  const isOpen = Boolean(anchorEl);
+
+  function handleClose() {
+    setAnchorEl(null);
+  }
 
   const query = tagQuery.trim().toLowerCase();
   const visibleTags = query ? tags.filter(({ tag }) => tag.toLowerCase().includes(query)) : tags;
@@ -34,75 +40,84 @@ export function TagFilterDropdown({ tags, selectedTags, onToggleTag, onClear }: 
   const selectedTagItems = [...selectedTags].map((tag) => ({ tag, count: countByTag.get(tag) ?? 0 }));
 
   return (
-    <div className="dropdown" ref={containerRef}>
-      <button
+    <>
+      <IconButton
         id="tag-filter-toggle"
-        className="btn btn-outline-secondary btn-sm dropdown-toggle d-inline-flex align-items-center"
-        type="button"
-        aria-expanded={isOpen}
+        size="small"
         aria-label="Filter by tag"
         title="Filter by tag"
-        onClick={() => setIsOpen((open) => !open)}
+        onClick={(event) => setAnchorEl(event.currentTarget)}
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2z" />
-        </svg>
-        {selectedTags.size > 0 && <span id="tag-filter-count" className="badge text-bg-primary ms-1">{selectedTags.size}</span>}
-      </button>
-      <div id="tag-filter-menu" className={`dropdown-menu p-0${isOpen ? " show" : ""}`} aria-labelledby="tag-filter-toggle">
-        <div className="p-2 border-bottom">
-          <input
-            id="tag-filter-search"
-            type="text"
-            className="form-control form-control-sm"
-            placeholder="Search tags…"
-            aria-label="Search tags"
-            value={tagQuery}
-            onChange={(event) => setTagQuery(event.target.value)}
-          />
-        </div>
-        {selectedTagItems.length > 0 && (
-          <>
-            <div id="tag-filter-selected" className="px-1 py-1">
-              {selectedTagItems.map(({ tag, count }) => (
-                <label className="tag-filter-item dropdown-item" key={`selected-${tag}`}>
-                  <input
-                    type="checkbox"
-                    className="form-check-input mt-0"
-                    checked
-                    onChange={() => onToggleTag(tag)}
-                  />
-                  <span className="tag-filter-label">{tag}</span>
-                  <span className="badge text-bg-light border text-secondary">{count}</span>
-                </label>
-              ))}
-            </div>
-            <div className="dropdown-divider" />
-          </>
-        )}
-        <div id="tag-filter-options" className="px-1 py-1">
-          {visibleTags.length === 0 ? (
-            <div className="text-secondary small px-2 py-1">{emptyMessage}</div>
-          ) : (
-            visibleTags.map(({ tag, count }) => (
-              <label className="tag-filter-item dropdown-item" key={tag}>
-                <input
-                  type="checkbox"
-                  className="form-check-input mt-0"
-                  checked={selectedTags.has(tag)}
-                  onChange={() => onToggleTag(tag)}
-                />
-                <span className="tag-filter-label">{tag}</span>
-                <span className="badge text-bg-light border text-secondary">{count}</span>
-              </label>
-            ))
+        <Badge id="tag-filter-count" badgeContent={selectedTags.size} color="primary" invisible={selectedTags.size === 0}>
+          <FilterListIcon fontSize="small" />
+        </Badge>
+      </IconButton>
+      <Popover
+        id="tag-filter-menu"
+        open={isOpen}
+        anchorEl={anchorEl}
+        onClose={handleClose}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+      >
+        <Box sx={{ width: 280 }}>
+          <Box sx={{ p: 1, borderBottom: 1, borderColor: "divider" }}>
+            <TextField
+              id="tag-filter-search"
+              size="small"
+              fullWidth
+              placeholder="Search tags…"
+              aria-label="Search tags"
+              value={tagQuery}
+              onChange={(event) => setTagQuery(event.target.value)}
+            />
+          </Box>
+          {selectedTagItems.length > 0 && (
+            <>
+              <List id="tag-filter-selected" dense disablePadding>
+                {selectedTagItems.map(({ tag, count }) => (
+                  <ListItemButton key={`selected-${tag}`} onClick={() => onToggleTag(tag)} dense>
+                    <ListItemIcon sx={{ minWidth: 0, mr: 1 }}>
+                      <Checkbox edge="start" checked size="small" disableRipple tabIndex={-1} />
+                    </ListItemIcon>
+                    <ListItemText primary={tag} />
+                    <Chip label={count} size="small" variant="outlined" />
+                  </ListItemButton>
+                ))}
+              </List>
+              <Divider />
+            </>
           )}
-        </div>
-        <div className="dropdown-divider" />
-        <button id="tag-filter-clear" type="button" className="dropdown-item text-secondary small" onClick={onClear}>
-          Clear tag filters
-        </button>
-      </div>
-    </div>
+          <List id="tag-filter-options" dense disablePadding sx={{ maxHeight: 280, overflowY: "auto" }}>
+            {visibleTags.length === 0 ? (
+              <Typography color="text.secondary" variant="body2" sx={{ px: 2, py: 1 }}>
+                {emptyMessage}
+              </Typography>
+            ) : (
+              visibleTags.map(({ tag, count }) => (
+                <ListItemButton key={tag} onClick={() => onToggleTag(tag)} dense>
+                  <ListItemIcon sx={{ minWidth: 0, mr: 1 }}>
+                    <Checkbox
+                      edge="start"
+                      checked={selectedTags.has(tag)}
+                      size="small"
+                      disableRipple
+                      tabIndex={-1}
+                    />
+                  </ListItemIcon>
+                  <ListItemText primary={tag} />
+                  <Chip label={count} size="small" variant="outlined" />
+                </ListItemButton>
+              ))
+            )}
+          </List>
+          <Divider />
+          <ListItemButton id="tag-filter-clear" onClick={onClear} dense>
+            <Typography color="text.secondary" variant="body2">
+              Clear tag filters
+            </Typography>
+          </ListItemButton>
+        </Box>
+      </Popover>
+    </>
   );
 }

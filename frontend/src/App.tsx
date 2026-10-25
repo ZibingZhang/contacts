@@ -5,6 +5,9 @@ import { filterContacts, contactMatchesTags, contactLetter } from "./search";
 import { Sidebar, type ListStatus } from "./components/Sidebar";
 import { ContactDetail } from "./components/ContactDetail";
 import { BatchTagModal } from "./components/BatchTagModal";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import Alert from "@mui/material/Alert";
 
 function networkErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -234,7 +237,7 @@ export function App() {
   }
 
   return (
-    <div className="d-flex vh-100">
+    <Box sx={{ display: "flex", height: "100vh" }}>
       <Sidebar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -261,17 +264,15 @@ export function App() {
         onAddTags={() => setShowBatchTagModal(true)}
       />
 
-      <main id="contact-detail" className="flex-grow-1 overflow-auto p-4">
+      <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", p: 4 }}>
         {selectedContact ? (
           <ContactDetail contact={selectedContact} />
         ) : selectedContactId !== null ? (
-          <div className="alert alert-danger" role="alert">
-            Contact not found.
-          </div>
+          <Alert severity="error">Contact not found.</Alert>
         ) : (
-          <div className="text-secondary">Select a contact to see their details.</div>
+          <Typography color="text.secondary">Select a contact to see their details.</Typography>
         )}
-      </main>
+      </Box>
 
       {showBatchTagModal && (
         <BatchTagModal
@@ -281,6 +282,6 @@ export function App() {
           onSubmit={handleBatchAddTags}
         />
       )}
-    </div>
+    </Box>
   );
 }

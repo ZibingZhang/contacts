@@ -1,5 +1,17 @@
 import { useState } from "react";
 import type { TagCount } from "../types";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
+import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import Autocomplete from "@mui/material/Autocomplete";
+import TextField from "@mui/material/TextField";
+import Chip from "@mui/material/Chip";
+import Box from "@mui/material/Box";
+import Alert from "@mui/material/Alert";
+import CloseIcon from "@mui/icons-material/Close";
 
 interface BatchTagModalProps {
   contactCount: number;
@@ -10,34 +22,10 @@ interface BatchTagModalProps {
 
 export function BatchTagModal({ contactCount, allTags, onCancel, onSubmit }: BatchTagModalProps) {
   const [pendingTags, setPendingTags] = useState<string[]>([]);
-  const [tagQuery, setTagQuery] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function addTag(tag: string) {
-    const trimmed = tag.trim();
-    if (!trimmed) return;
-    setPendingTags((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
-    setTagQuery("");
-  }
-
-  function removeTag(tag: string) {
-    setPendingTags((prev) => prev.filter((t) => t !== tag));
-  }
-
-  function handleQueryKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter" || event.key === ",") {
-      event.preventDefault();
-      addTag(tagQuery);
-    } else if (event.key === "Backspace" && !tagQuery && pendingTags.length > 0) {
-      removeTag(pendingTags[pendingTags.length - 1]);
-    }
-  }
-
-  const query = tagQuery.trim().toLowerCase();
-  const suggestions = allTags.filter(
-    ({ tag }) => !pendingTags.includes(tag) && (!query || tag.toLowerCase().includes(query))
-  );
+  const countByTag = new Map(allTags.map(({ tag, count }) => [tag, count]));
 
   async function handleSubmit() {
     if (pendingTags.length === 0 || isSubmitting) return;
@@ -52,91 +40,67 @@ export function BatchTagModal({ contactCount, allTags, onCancel, onSubmit }: Bat
   }
 
   return (
-    <>
-      <div className="modal-backdrop show" />
-      <div
-        id="batch-tag-modal"
-        className="modal d-block"
-        tabIndex={-1}
-        role="dialog"
-        onClick={onCancel}
-      >
-        <div
-          className="modal-dialog modal-dialog-centered"
-          onClick={(event) => event.stopPropagation()}
+    <Dialog id="batch-tag-modal" open onClose={onCancel} maxWidth="sm" fullWidth>
+      <DialogTitle>
+        Add tags to {contactCount} contact{contactCount === 1 ? "" : "s"}
+        <IconButton
+          aria-label="Close"
+          onClick={onCancel}
+          sx={{ position: "absolute", right: 8, top: 8 }}
         >
-          <div className="modal-content">
-            <div className="modal-header">
-              <h5 className="modal-title">
-                Add tags to {contactCount} contact{contactCount === 1 ? "" : "s"}
-              </h5>
-              <button type="button" className="btn-close" aria-label="Close" onClick={onCancel} />
-            </div>
-            <div className="modal-body">
-              {pendingTags.length > 0 && (
-                <div id="batch-tag-pending" className="d-flex flex-wrap gap-1 mb-2">
-                  {pendingTags.map((tag) => (
-                    <span className="badge text-bg-primary d-inline-flex align-items-center gap-1" key={tag}>
-                      {tag}
-                      <button
-                        type="button"
-                        className="btn-close btn-close-white"
-                        aria-label={`Remove ${tag}`}
-                        style={{ fontSize: "0.55rem" }}
-                        onClick={() => removeTag(tag)}
-                      />
-                    </span>
-                  ))}
-                </div>
-              )}
-              <input
-                id="batch-tag-input"
-                type="text"
-                className="form-control"
-                placeholder="Type a tag and press Enter…"
-                aria-label="New tag"
-                autoFocus
-                value={tagQuery}
-                onChange={(event) => setTagQuery(event.target.value)}
-                onKeyDown={handleQueryKeyDown}
-              />
-              {suggestions.length > 0 && (
-                <div id="batch-tag-suggestions" className="list-group mt-2" style={{ maxHeight: 200, overflowY: "auto" }}>
-                  {suggestions.map(({ tag, count }) => (
-                    <button
-                      type="button"
-                      key={tag}
-                      className="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-1"
-                      onClick={() => addTag(tag)}
-                    >
-                      <span>{tag}</span>
-                      <span className="badge text-bg-light border text-secondary">{count}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {error && (
-                <div className="alert alert-danger mt-2 mb-0 py-1 px-2 small" role="alert">
-                  {error}
-                </div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button type="button" className="btn btn-outline-secondary" onClick={onCancel} disabled={isSubmitting}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleSubmit}
-                disabled={pendingTags.length === 0 || isSubmitting}
-              >
-                {isSubmitting ? "Adding…" : `Add tag${pendingTags.length === 1 ? "" : "s"}`}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent>
+        <Autocomplete
+          multiple
+          freeSolo
+          id="batch-tag-input"
+          options={allTags.map(({ tag }) => tag)}
+          value={pendingTags}
+          onChange={(_event, newValue) => {
+            const unique = Array.from(new Set(newValue.map((v) => v.trim()).filter(Boolean)));
+            setPendingTags(unique);
+          }}
+          filterOptions={(options, state) => {
+            const query = state.inputValue.trim().toLowerCase();
+            return options.filter(
+              (option) => !pendingTags.includes(option) && (!query || option.toLowerCase().includes(query))
+            );
+          }}
+          renderOption={(props, option) => (
+            <Box
+              component="li"
+              {...props}
+              key={option}
+              sx={{ display: "flex", justifyContent: "space-between", width: "100%" }}
+            >
+              <span>{option}</span>
+              <Chip label={countByTag.get(option) ?? 0} size="small" variant="outlined" />
+            </Box>
+          )}
+          renderInput={(params) => (
+            <TextField {...params} placeholder="Type a tag and press Enter…" aria-label="New tag" autoFocus />
+          )}
+        />
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onCancel} disabled={isSubmitting}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={pendingTags.length === 0 || isSubmitting}
+        >
+          {isSubmitting ? "Adding…" : `Add tag${pendingTags.length === 1 ? "" : "s"}`}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }

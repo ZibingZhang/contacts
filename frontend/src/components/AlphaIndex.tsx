@@ -1,4 +1,5 @@
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
+import Box from "@mui/material/Box";
 
 const ALPHA_INDEX_LETTERS = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "#"];
 
@@ -25,10 +26,21 @@ export function AlphaIndex({ hidden, lettersPresent, onJumpToLetter }: AlphaInde
   }
 
   return (
-    <div
+    <Box
       id="alpha-index"
-      className="d-flex flex-column"
       hidden={hidden}
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flex: "0 0 16px",
+        alignSelf: "flex-start",
+        position: "sticky",
+        top: "50%",
+        transform: "translateY(-50%)",
+        py: 0.5,
+        touchAction: "none",
+        userSelect: "none",
+      }}
       onPointerDown={(event) => {
         isDragging.current = true;
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -46,15 +58,32 @@ export function AlphaIndex({ hidden, lettersPresent, onJumpToLetter }: AlphaInde
         isDragging.current = false;
       }}
     >
-      {ALPHA_INDEX_LETTERS.map((letter) => (
-        <div
-          className={`alpha-index-letter${lettersPresent.has(letter) ? "" : " disabled"}`}
-          data-letter={letter}
-          key={letter}
-        >
-          {letter}
-        </div>
-      ))}
-    </div>
+      {ALPHA_INDEX_LETTERS.map((letter) => {
+        const disabled = !lettersPresent.has(letter);
+        return (
+          <Box
+            className={disabled ? "disabled" : undefined}
+            data-letter={letter}
+            key={letter}
+            sx={{
+              fontSize: "0.6rem",
+              lineHeight: 1.2,
+              textAlign: "center",
+              borderRadius: "2px",
+              cursor: disabled ? "default" : "pointer",
+              color: disabled ? "divider" : "text.secondary",
+              "&:hover": disabled
+                ? undefined
+                : {
+                    color: "common.white",
+                    bgcolor: "primary.main",
+                  },
+            }}
+          >
+            {letter}
+          </Box>
+        );
+      })}
+    </Box>
   );
 }

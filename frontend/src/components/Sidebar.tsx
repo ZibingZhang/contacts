@@ -4,6 +4,10 @@ import { SearchBar } from "./SearchBar";
 import { TagFilterDropdown } from "./TagFilterDropdown";
 import { ContactList } from "./ContactList";
 import { AlphaIndex } from "./AlphaIndex";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Typography from "@mui/material/Typography";
+import Alert from "@mui/material/Alert";
 
 export type ListStatus = "loading" | "error" | "ready";
 
@@ -59,60 +63,105 @@ export function Sidebar({
   onAddTags,
 }: SidebarProps) {
   return (
-    <nav id="contact-nav" className="d-flex flex-column border-end flex-shrink-0">
-      <div className="p-2 border-bottom d-flex align-items-start gap-2">
-        <div className="flex-grow-1">
+    <Box
+      component="nav"
+      id="contact-nav"
+      sx={{
+        width: 320,
+        flexShrink: 0,
+        display: "flex",
+        flexDirection: "column",
+        borderRight: 1,
+        borderColor: "divider",
+      }}
+    >
+      <Box
+        sx={{
+          p: 1,
+          borderBottom: 1,
+          borderColor: "divider",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 1,
+        }}
+      >
+        <Box sx={{ flexGrow: 1 }}>
           <SearchBar value={searchQuery} onChange={onSearchChange} />
           <TagFilterDropdown tags={tags} selectedTags={selectedTags} onToggleTag={onToggleTag} onClear={onClearTags} />
-        </div>
-        <button
+        </Box>
+        <Button
           id="selection-mode-toggle"
-          type="button"
-          className={`btn btn-sm${selectionMode ? " btn-secondary" : " btn-outline-secondary"}`}
+          size="small"
+          variant={selectionMode ? "contained" : "outlined"}
+          color={selectionMode ? "secondary" : "inherit"}
           aria-pressed={selectionMode}
           onClick={onToggleSelectionMode}
         >
           {selectionMode ? "Done" : "Select"}
-        </button>
-      </div>
+        </Button>
+      </Box>
 
       {selectionMode && (
-        <div id="selection-toolbar" className="px-2 py-2 border-bottom d-flex align-items-center gap-2 flex-wrap">
-          <span className="small text-secondary">
+        <Box
+          id="selection-toolbar"
+          sx={{
+            px: 1,
+            py: 1,
+            borderBottom: 1,
+            borderColor: "divider",
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            flexWrap: "wrap",
+          }}
+        >
+          <Typography variant="body2" color="text.secondary">
             {selectedIds.size} selected
-          </span>
-          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onSelectAllVisible}>
+          </Typography>
+          <Button size="small" variant="outlined" color="inherit" onClick={onSelectAllVisible}>
             Select all
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-secondary"
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color="inherit"
             onClick={onClearSelection}
             disabled={selectedIds.size === 0}
           >
             Clear
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm btn-primary ms-auto"
+          </Button>
+          <Button
+            size="small"
+            variant="contained"
             onClick={onAddTags}
             disabled={selectedIds.size === 0}
+            sx={{ ml: "auto" }}
           >
             Add tags…
-          </button>
-        </div>
+          </Button>
+        </Box>
       )}
 
-      <div id="list-status" className="px-2 pt-2">
-        {listStatus === "loading" && <div className="text-secondary small p-2">Loading…</div>}
-        {listStatus === "error" && loadError && (
-          <div className="alert alert-danger" role="alert">
-            {loadError}
-          </div>
+      <Box id="list-status" sx={{ px: 1, pt: 1 }}>
+        {listStatus === "loading" && (
+          <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+            Loading…
+          </Typography>
         )}
-      </div>
+        {listStatus === "error" && loadError && <Alert severity="error">{loadError}</Alert>}
+      </Box>
 
-      <div id="contact-list-scroll" className="d-flex flex-grow-1 overflow-auto position-relative" ref={scrollContainerRef}>
+      <Box
+        id="contact-list-scroll"
+        ref={scrollContainerRef}
+        sx={{
+          display: "flex",
+          alignItems: "flex-start",
+          flexGrow: 1,
+          overflow: "auto",
+          position: "relative",
+        }}
+      >
         <ContactList
           contacts={contacts}
           grouped={grouped}
@@ -124,11 +173,23 @@ export function Sidebar({
           onToggleSelect={onToggleSelect}
         />
         <AlphaIndex hidden={!grouped} lettersPresent={lettersPresent} onJumpToLetter={onJumpToLetter} />
-      </div>
+      </Box>
 
-      <div id="contact-list-footer" className="border-top px-2 py-1 text-secondary small text-center">
-        {contacts.length} contact{contacts.length === 1 ? "" : "s"}
-      </div>
-    </nav>
+      <Box
+        id="contact-list-footer"
+        sx={{
+          flexShrink: 0,
+          borderTop: 1,
+          borderColor: "divider",
+          px: 1,
+          py: 0.5,
+          textAlign: "center",
+        }}
+      >
+        <Typography variant="body2" color="text.secondary">
+          {contacts.length} contact{contacts.length === 1 ? "" : "s"}
+        </Typography>
+      </Box>
+    </Box>
   );
 }

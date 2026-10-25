@@ -2,6 +2,12 @@ import type { ReactNode, RefObject } from "react";
 import type { Contact } from "../types";
 import { buildDisplayName } from "../format";
 import { contactLetter } from "../search";
+import List from "@mui/material/List";
+import ListSubheader from "@mui/material/ListSubheader";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
+import Checkbox from "@mui/material/Checkbox";
 
 interface ContactListProps {
   contacts: Contact[];
@@ -36,21 +42,35 @@ export function ContactList({
       if (letter !== currentLetter) {
         currentLetter = letter;
         items.push(
-          <div className="contact-letter-header" id={`contact-letter-${letter}`} key={`header-${letter}`}>
+          <ListSubheader
+            className="contact-letter-header"
+            id={`contact-letter-${letter}`}
+            key={`header-${letter}`}
+            sx={{
+              position: "sticky",
+              top: 0,
+              zIndex: 1,
+              lineHeight: "1.6rem",
+              fontSize: "0.75rem",
+              fontWeight: 700,
+              color: "text.secondary",
+              bgcolor: "background.default",
+            }}
+          >
             {letter}
-          </div>
+          </ListSubheader>
         );
       }
     }
 
     const isChecked = selectedIds.has(contact.id);
+    const displayName = buildDisplayName(contact.name, { includeNickname: false }) || `Contact ${contact.id}`;
 
     items.push(
-      <a
+      <ListItemButton
+        component="a"
         href="#"
-        className={`list-group-item list-group-item-action d-flex align-items-center gap-2${
-          contact.id === selectedContactId ? " active" : ""
-        }`}
+        selected={contact.id === selectedContactId}
         data-contact-id={contact.id}
         key={contact.id}
         onClick={(event) => {
@@ -59,23 +79,30 @@ export function ContactList({
         }}
       >
         {selectionMode && (
-          <input
-            type="checkbox"
-            className="form-check-input mt-0 flex-shrink-0"
-            checked={isChecked}
-            onChange={() => onToggleSelect(contact.id)}
-            onClick={(event) => event.stopPropagation()}
-            aria-label={`Select ${buildDisplayName(contact.name, { includeNickname: false }) || `Contact ${contact.id}`}`}
-          />
+          <ListItemIcon sx={{ minWidth: 0, mr: 1 }}>
+            <Checkbox
+              edge="start"
+              checked={isChecked}
+              onChange={() => onToggleSelect(contact.id)}
+              onClick={(event) => event.stopPropagation()}
+              aria-label={`Select ${displayName}`}
+            />
+          </ListItemIcon>
         )}
-        <div>{buildDisplayName(contact.name, { includeNickname: false }) || `Contact ${contact.id}`}</div>
-      </a>
+        <ListItemText primary={displayName} />
+      </ListItemButton>
     );
   }
 
   return (
-    <div className="list-group list-group-flush flex-grow-1" id="contact-list" ref={listRef}>
+    <List
+      component="div"
+      id="contact-list"
+      disablePadding
+      sx={{ flexGrow: 1, alignSelf: "flex-start", width: "100%" }}
+      ref={listRef}
+    >
       {items}
-    </div>
+    </List>
   );
 }

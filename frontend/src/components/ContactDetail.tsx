@@ -10,25 +10,33 @@ import {
   EDUCATION_LABELS,
 } from "../format";
 import { DetailSection, fieldRow } from "./DetailSection";
+import Box from "@mui/material/Box";
+import Avatar from "@mui/material/Avatar";
+import Typography from "@mui/material/Typography";
+import Chip from "@mui/material/Chip";
 
 function NameHeader({ contact }: { contact: Contact }) {
   return (
-    <div className="d-flex align-items-center gap-3 mb-4">
-      <div className="detail-avatar-placeholder">{initials(contact.name)}</div>
-      <div>
-        <h3 className="mb-1">{buildDisplayName(contact.name) || `Contact ${contact.id}`}</h3>
-        {contact.name?.chinese_name && <div className="text-secondary">{contact.name.chinese_name}</div>}
-        {contact.tags && contact.tags.length > 0 && (
-          <div className="mt-2">
-            {contact.tags.map((tag) => (
-              <span className="badge text-bg-secondary me-1" key={tag}>
-                {tag}
-              </span>
-            ))}
-          </div>
+    <Box sx={{ display: "flex", alignItems: "center", gap: 3, mb: 4 }}>
+      <Avatar sx={{ width: 64, height: 64, fontSize: "1.25rem", fontWeight: 600 }}>
+        {initials(contact.name)}
+      </Avatar>
+      <Box>
+        <Typography variant="h5" sx={{ mb: 0.5 }}>
+          {buildDisplayName(contact.name) || `Contact ${contact.id}`}
+        </Typography>
+        {contact.name?.chinese_name && (
+          <Typography color="text.secondary">{contact.name.chinese_name}</Typography>
         )}
-      </div>
-    </div>
+        {contact.tags && contact.tags.length > 0 && (
+          <Box sx={{ mt: 1, display: "flex", gap: 0.5, flexWrap: "wrap" }}>
+            {contact.tags.map((tag) => (
+              <Chip label={tag} size="small" key={tag} />
+            ))}
+          </Box>
+        )}
+      </Box>
+    </Box>
   );
 }
 
