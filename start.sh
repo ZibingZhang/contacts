@@ -1,16 +1,20 @@
 #!/bin/bash
 # Starts the backend API and frontend static server using the ports in config.yaml.
 #
-# Usage: ./start.sh [--env dev|prod]
+# Usage: ./start.sh [--env dev|prod] [--log-http]
 #   prod (default): production frontend build served via `vite preview`,
 #                    backend without debug mode.
 #   dev:             frontend `vite` dev server (HMR, React StrictMode),
 #                    backend with --debug.
+#   --log-http:      log iCloud HTTP request/response bodies to a file
+#                     under logs/ (off by default -- too noisy for regular
+#                     development).
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
 ENV=prod
+LOG_HTTP=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --env)
@@ -19,6 +23,10 @@ while [ $# -gt 0 ]; do
       ;;
     --env=*)
       ENV="${1#--env=}"
+      shift
+      ;;
+    --log-http)
+      LOG_HTTP=1
       shift
       ;;
     *)
@@ -70,6 +78,10 @@ if [ "$ENV" = dev ]; then
   BACKEND_ARGS+=(--debug)
 fi
 
+if [ "$LOG_HTTP" = 1 ]; then
+  export CONTACTS_LOG_HTTP=1
+fi
+
 python -m contacts serve "${BACKEND_ARGS[@]}" &
 BACKEND_PID=$!
 
@@ -83,6 +95,7 @@ FRONTEND_PID=$!
 trap 'kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null' EXIT INT TERM
 
 echo "Env:      ${ENV}"
+echo "Log HTTP: ${LOG_HTTP}"
 echo "Backend:  http://${BACKEND_HOST}:${BACKEND_PORT}"
 echo "Frontend: http://localhost:${FRONTEND_PORT}"
 
