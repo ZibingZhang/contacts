@@ -14,13 +14,13 @@ points at the configured backend port. Then open http://localhost:8902/ (or
 whatever port `frontend.port` is set to) in a browser. Ctrl-C stops both
 processes.
 
-By default this runs in `prod` mode: the frontend is built and served via
-`vite preview`, and the backend runs without `--debug`. Pass `--env dev` to
-instead run the Vite dev server (hot reload, React StrictMode) and the
-backend with `--debug`:
+By default this runs in `dev` mode: the Vite dev server (hot reload, React
+StrictMode) and the backend with `--debug` (auto-reloads on code changes).
+Pass `--env prod` to instead build the frontend and serve it via
+`vite preview`, with the backend running without `--debug`:
 
 ```bash
-./start.sh --env dev
+./start.sh --env prod
 ```
 
 The first time you set this up (or after pulling changes that touch

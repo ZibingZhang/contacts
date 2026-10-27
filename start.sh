@@ -2,10 +2,10 @@
 # Starts the backend API and frontend static server using the ports in config.yaml.
 #
 # Usage: ./start.sh [--env dev|prod] [--log-http]
-#   prod (default): production frontend build served via `vite preview`,
+#   dev (default):   frontend `vite` dev server (HMR, React StrictMode),
+#                    backend with --debug (auto-reloads on code changes).
+#   prod:            production frontend build served via `vite preview`,
 #                    backend without debug mode.
-#   dev:             frontend `vite` dev server (HMR, React StrictMode),
-#                    backend with --debug.
 #   --log-http:      log iCloud HTTP request/response bodies to a file
 #                     under logs/ (off by default -- too noisy for regular
 #                     development).
@@ -13,7 +13,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-ENV=prod
+ENV=dev
 LOG_HTTP=0
 while [ $# -gt 0 ]; do
   case "$1" in
