@@ -112,11 +112,38 @@ def list_contacts():
     )
 
 
+@bp.get("/contacts/options")
+def contact_options():
+    return jsonify(service.list_contact_field_options())
+
+
+@bp.post("/contacts")
+def create_contact():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise errors.ValidationError("Request body must be a JSON object")
+
+    data = {k: v for k, v in body.items() if k not in ("id", "mtime", "icloud")}
+    contact = service.create_contact(data)
+    return jsonify(contact.to_dict()), 201
+
+
 @bp.get("/contacts/<int:contact_id>")
 def get_contact(contact_id: int):
     contact = service.get_contact(contact_id)
     if contact is None:
         raise errors.NotFoundError(f"Contact {contact_id} not found")
+    return jsonify(contact.to_dict())
+
+
+@bp.put("/contacts/<int:contact_id>")
+def update_contact(contact_id: int):
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise errors.ValidationError("Request body must be a JSON object")
+
+    data = {k: v for k, v in body.items() if k not in ("id", "mtime", "icloud")}
+    contact = service.update_contact(contact_id, data)
     return jsonify(contact.to_dict())
 
 

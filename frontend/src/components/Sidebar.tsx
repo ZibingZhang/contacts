@@ -37,6 +37,7 @@ interface SidebarProps {
   onSelectAllVisible: () => void;
   onClearSelection: () => void;
   onAddTags: () => void;
+  onNewContact: () => void;
   syncing: boolean;
   syncDirection: SyncDirection | null;
   syncMessage: string | null;
@@ -69,6 +70,7 @@ export function Sidebar({
   onSelectAllVisible,
   onClearSelection,
   onAddTags,
+  onNewContact,
   syncing,
   syncDirection,
   syncMessage,
@@ -134,6 +136,9 @@ export function Sidebar({
           onClick={onToggleSelectionMode}
         >
           {selectionMode ? "Done" : "Select"}
+        </Button>
+        <Button id="new-contact-button" size="small" variant="contained" onClick={onNewContact}>
+          New Contact
         </Button>
       </Box>
 

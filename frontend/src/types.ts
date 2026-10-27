@@ -46,6 +46,7 @@ export interface FacebookProfile {
 
 export interface GameCenterProfile {
   username: string;
+  link?: string;
 }
 
 export interface InstagramProfile {
@@ -83,6 +84,18 @@ export interface Contact {
 export interface TagCount {
   tag: string;
   count: number;
+}
+
+export interface CountryCodeOption {
+  code: number;
+  label: string;
+}
+
+export interface ContactFieldOptions {
+  countries: string[];
+  country_codes: CountryCodeOption[];
+  high_schools: string[];
+  universities: string[];
 }
 
 export interface ContactsResponse {

@@ -1,4 +1,11 @@
-import type { BatchAddTagsResponse, ContactsResponse, SyncResult, TagsResponse } from "./types";
+import type {
+  BatchAddTagsResponse,
+  Contact,
+  ContactFieldOptions,
+  ContactsResponse,
+  SyncResult,
+  TagsResponse,
+} from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 
@@ -47,12 +54,33 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return readJsonResponse<T>(response);
 }
 
+async function apiPut<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(API_BASE_URL + path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJsonResponse<T>(response);
+}
+
 export function fetchContacts(): Promise<ContactsResponse> {
   return apiGet<ContactsResponse>("/contacts");
 }
 
 export function fetchTags(): Promise<TagsResponse> {
   return apiGet<TagsResponse>("/tags");
+}
+
+export function fetchContactFieldOptions(): Promise<ContactFieldOptions> {
+  return apiGet<ContactFieldOptions>("/contacts/options");
+}
+
+export function createContact(payload: Record<string, unknown>): Promise<Contact> {
+  return apiPost<Contact>("/contacts", payload);
+}
+
+export function updateContact(contactId: number, payload: Record<string, unknown>): Promise<Contact> {
+  return apiPut<Contact>(`/contacts/${contactId}`, payload);
 }
 
 export function batchAddTags(contactIds: number[], tags: string[]): Promise<BatchAddTagsResponse> {

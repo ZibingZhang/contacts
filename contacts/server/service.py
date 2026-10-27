@@ -9,7 +9,7 @@ from typing import cast
 from contacts import model
 from contacts.dao import disk_dao, icloud_dao
 from contacts.server import errors
-from contacts.utils import contact_utils, dataclasses_utils
+from contacts.utils import contact_utils, dataclasses_utils, uuid_utils
 
 _contacts_cache: list[model.DiskContact] | None = None
 
@@ -58,6 +58,92 @@ def get_contact(contact_id: int) -> model.DiskContact | None:
     """
     contacts_by_id = {contact.id: contact for contact in disk_dao.read_contacts()}
     return contacts_by_id.get(contact_id)
+
+
+def create_contact(data: dict) -> model.DiskContact:
+    """Creates a new contact from user-provided field data.
+
+    Args:
+        data: Contact field data matching model.Contact's JSON shape (no
+            "id", "mtime", or "icloud" -- those are assigned here).
+
+    Returns:
+        The newly created contact, with its assigned id.
+
+    Raises:
+        errors.ValidationError: If the data doesn't match the contact schema.
+    """
+    try:
+        contact = model.Contact.from_dict(data)
+    except Exception as e:
+        raise errors.ValidationError(f"Invalid contact data: {e}") from e
+
+    contact.mtime = time.time()
+    contact.icloud = model.ICloudMetadata(uuid=uuid_utils.generate())
+
+    new_contact = cast(model.DiskContact, contact)
+    disk_dao.create_contacts([new_contact])
+    invalidate_contacts_cache()
+
+    return new_contact
+
+
+def update_contact(contact_id: int, data: dict) -> model.DiskContact:
+    """Overwrites a contact's field data, preserving its id and iCloud link.
+
+    Args:
+        contact_id: The id of the contact to update.
+        data: Contact field data matching model.Contact's JSON shape (no
+            "id", "mtime", or "icloud" -- those are preserved/assigned here).
+
+    Returns:
+        The updated contact.
+
+    Raises:
+        errors.NotFoundError: If no contact with that id exists.
+        errors.ValidationError: If the data doesn't match the contact schema.
+    """
+    existing_contact = get_contact(contact_id)
+    if existing_contact is None:
+        raise errors.NotFoundError(f"Contact {contact_id} not found")
+
+    try:
+        contact = model.Contact.from_dict(data)
+    except Exception as e:
+        raise errors.ValidationError(f"Invalid contact data: {e}") from e
+
+    contact.id = contact_id
+    contact.mtime = time.time()
+    contact.icloud = existing_contact.icloud
+
+    updated_contact = cast(model.DiskContact, contact)
+    disk_dao.update_contacts([updated_contact])
+    invalidate_contacts_cache()
+
+    return updated_contact
+
+
+def list_contact_field_options() -> dict:
+    """Lists the fixed option sets used by constrained contact fields.
+
+    Returns:
+        {"countries": list[str], "country_codes": [{"code": int, "label":
+        str}], "high_schools": list[str], "universities": list[str]}.
+    """
+    return {
+        "countries": model.Country.values(),
+        "country_codes": [
+            {
+                "code": int(code),
+                "label": "United States/Canada"
+                if code is model.CountryCode.NANP
+                else code.name.replace("_", " ").title(),
+            }
+            for code in model.CountryCode
+        ],
+        "high_schools": model.HighSchoolName.values(),
+        "universities": model.UniversityName.values(),
+    }
 
 
 def list_tags() -> list[dict]:

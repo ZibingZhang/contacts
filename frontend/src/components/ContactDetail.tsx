@@ -14,28 +14,34 @@ import Box from "@mui/material/Box";
 import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
+import Button from "@mui/material/Button";
 
-function NameHeader({ contact }: { contact: Contact }) {
+function NameHeader({ contact, onEdit }: { contact: Contact; onEdit: () => void }) {
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 3, mb: 4 }}>
-      <Avatar sx={{ width: 64, height: 64, fontSize: "1.25rem", fontWeight: 600 }}>
-        {initials(contact.name)}
-      </Avatar>
-      <Box>
-        <Typography variant="h5" sx={{ mb: 0.5 }}>
-          {buildDisplayName(contact.name) || `Contact ${contact.id}`}
-        </Typography>
-        {contact.name?.chinese_name && (
-          <Typography color="text.secondary">{contact.name.chinese_name}</Typography>
-        )}
-        {contact.tags && contact.tags.length > 0 && (
-          <Box sx={{ mt: 1, display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-            {contact.tags.map((tag) => (
-              <Chip label={tag} size="small" key={tag} />
-            ))}
-          </Box>
-        )}
+    <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", mb: 4 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
+        <Avatar sx={{ width: 64, height: 64, fontSize: "1.25rem", fontWeight: 600 }}>
+          {initials(contact.name)}
+        </Avatar>
+        <Box>
+          <Typography variant="h5" sx={{ mb: 0.5 }}>
+            {buildDisplayName(contact.name) || `Contact ${contact.id}`}
+          </Typography>
+          {contact.name?.chinese_name && (
+            <Typography color="text.secondary">{contact.name.chinese_name}</Typography>
+          )}
+          {contact.tags && contact.tags.length > 0 && (
+            <Box sx={{ mt: 1, display: "flex", gap: 0.5, flexWrap: "wrap" }}>
+              {contact.tags.map((tag) => (
+                <Chip label={tag} size="small" key={tag} />
+              ))}
+            </Box>
+          )}
+        </Box>
       </Box>
+      <Button id="edit-contact-button" variant="outlined" size="small" onClick={onEdit}>
+        Edit
+      </Button>
     </Box>
   );
 }
@@ -68,7 +74,7 @@ function InstagramValue({ username, finstaUsernames }: { username: string; finst
   );
 }
 
-export function ContactDetail({ contact }: { contact: Contact }) {
+export function ContactDetail({ contact, onEdit }: { contact: Contact; onEdit: () => void }) {
   const birthday = formatDate(contact.birthday);
 
   const socialRows = [];
@@ -109,7 +115,7 @@ export function ContactDetail({ contact }: { contact: Contact }) {
 
   return (
     <>
-      <NameHeader contact={contact} />
+      <NameHeader contact={contact} onEdit={onEdit} />
 
       {birthday && <DetailSection title="Birthday" rows={[fieldRow("Birthday", birthday)]} />}
 

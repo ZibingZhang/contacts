@@ -131,6 +131,101 @@ def test_add_tags_to_contacts_missing_id_raises(monkeypatch, contacts) -> None:
         service.add_tags_to_contacts([1, 999], ["C"])
 
 
+def test_create_contact_writes_and_returns_new_contact(monkeypatch) -> None:
+    written = []
+    monkeypatch.setattr(service.disk_dao, "create_contacts", written.append)
+
+    created = service.create_contact(
+        {"name": {"first_name": "New", "last_name": "Person"}, "tags": ["A"]}
+    )
+
+    assert created.name.first_name == "New"
+    assert created.icloud is not None
+    assert created.mtime is not None
+    assert written == [[created]]
+
+
+def test_create_contact_invalidates_cache(monkeypatch, contacts) -> None:
+    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+    monkeypatch.setattr(service.disk_dao, "create_contacts", lambda _: None)
+
+    service.list_contacts()
+    service.create_contact({"name": {"first_name": "New"}})
+
+    read_calls = 0
+
+    def read_contacts():
+        nonlocal read_calls
+        read_calls += 1
+        return contacts
+
+    monkeypatch.setattr(service.disk_dao, "read_contacts", read_contacts)
+    service.list_contacts()
+
+    assert read_calls == 1
+
+
+def test_create_contact_invalid_data_raises() -> None:
+    with pytest.raises(service.errors.ValidationError):
+        service.create_contact({"name": {}, "education": {"bachelor": {"name": "Not A School"}}})
+
+
+def test_update_contact_writes_and_returns_updated_contact(monkeypatch, contacts) -> None:
+    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+    written = []
+    monkeypatch.setattr(service.disk_dao, "update_contacts", written.append)
+
+    updated = service.update_contact(1, {"name": {"first_name": "Johnny", "last_name": "Smith"}})
+
+    assert updated.id == 1
+    assert updated.name.first_name == "Johnny"
+    assert updated.icloud == contacts[0].icloud
+    assert written == [[updated]]
+
+
+def test_update_contact_missing_id_raises(monkeypatch, contacts) -> None:
+    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+
+    with pytest.raises(service.errors.NotFoundError):
+        service.update_contact(999, {"name": {}})
+
+
+def test_update_contact_invalidates_cache(monkeypatch, contacts) -> None:
+    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+
+    service.list_contacts()
+    service.update_contact(1, {"name": {"first_name": "Johnny"}})
+
+    read_calls = 0
+
+    def read_contacts():
+        nonlocal read_calls
+        read_calls += 1
+        return contacts
+
+    monkeypatch.setattr(service.disk_dao, "read_contacts", read_contacts)
+    service.list_contacts()
+
+    assert read_calls == 1
+
+
+def test_update_contact_invalid_data_raises(monkeypatch, contacts) -> None:
+    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+
+    with pytest.raises(service.errors.ValidationError):
+        service.update_contact(1, {"name": {}, "education": {"bachelor": {"name": "Not A School"}}})
+
+
+def test_list_contact_field_options() -> None:
+    options = service.list_contact_field_options()
+
+    assert "Ireland" in options["countries"]
+    assert {"code": 1, "label": "United States/Canada"} in options["country_codes"]
+    assert "Harvard University" in options["universities"]
+    assert "Brookline High School" in options["high_schools"]
+
+
 def test_start_sync_from_icloud_stages_new_contacts_for_review(monkeypatch, contacts) -> None:
     new_contact = contact_fixtures.build(name=model.Name(first_name="New"))
 

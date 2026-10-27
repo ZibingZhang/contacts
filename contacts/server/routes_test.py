@@ -69,6 +69,100 @@ def test_get_contact_not_found(client) -> None:
     assert response.get_json()["error"]["code"] == "not_found"
 
 
+def test_contact_options(client) -> None:
+    response = client.get("/api/contacts/options")
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert "Ireland" in body["countries"]
+    assert {"code": 1, "label": "United States/Canada"} in body["country_codes"]
+
+
+def test_create_contact(client, monkeypatch) -> None:
+    written = []
+    monkeypatch.setattr(service.disk_dao, "create_contacts", written.append)
+
+    response = client.post(
+        "/api/contacts",
+        json={"name": {"first_name": "New", "last_name": "Person"}},
+    )
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["name"] == {"first_name": "New", "last_name": "Person"}
+    assert len(written) == 1
+
+
+def test_create_contact_ignores_client_supplied_id_and_icloud(client, monkeypatch) -> None:
+    written = []
+    monkeypatch.setattr(service.disk_dao, "create_contacts", written.append)
+
+    response = client.post(
+        "/api/contacts",
+        json={"id": 999, "icloud": {"uuid": "fake"}, "name": {"first_name": "New"}},
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["icloud"]["uuid"] != "fake"
+
+
+def test_create_contact_invalid_data(client) -> None:
+    response = client.post(
+        "/api/contacts",
+        json={"name": {}, "education": {"bachelor": {"name": "Not A School"}}},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"]["code"] == "invalid_request"
+
+
+def test_update_contact(client, monkeypatch) -> None:
+    written = []
+    monkeypatch.setattr(service.disk_dao, "update_contacts", written.append)
+
+    response = client.put(
+        "/api/contacts/1",
+        json={"name": {"first_name": "Johnny", "last_name": "Smith"}},
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["id"] == 1
+    assert body["name"] == {"first_name": "Johnny", "last_name": "Smith"}
+    assert len(written) == 1
+
+
+def test_update_contact_ignores_client_supplied_id_and_icloud(client, monkeypatch) -> None:
+    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+
+    response = client.put(
+        "/api/contacts/1",
+        json={"id": 999, "icloud": {"uuid": "fake"}, "name": {"first_name": "Johnny"}},
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["id"] == 1
+    assert body["icloud"]["uuid"] != "fake"
+
+
+def test_update_contact_not_found(client) -> None:
+    response = client.put("/api/contacts/999", json={"name": {}})
+
+    assert response.status_code == 404
+    assert response.get_json()["error"]["code"] == "not_found"
+
+
+def test_update_contact_invalid_data(client) -> None:
+    response = client.put(
+        "/api/contacts/1",
+        json={"name": {}, "education": {"bachelor": {"name": "Not A School"}}},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"]["code"] == "invalid_request"
+
+
 def test_list_tags(client) -> None:
     response = client.get("/api/tags")
 

@@ -19,6 +19,7 @@ import { filterContacts, contactMatchesTags, contactLetter } from "./search";
 import { Sidebar, type ListStatus } from "./components/Sidebar";
 import { ContactDetail } from "./components/ContactDetail";
 import { BatchTagModal } from "./components/BatchTagModal";
+import { ContactForm } from "./components/ContactForm";
 import { SyncVerificationModal } from "./components/SyncVerificationModal";
 import { SyncReviewModal, type SyncDirection } from "./components/SyncReviewModal";
 import Box from "@mui/material/Box";
@@ -63,6 +64,7 @@ export function App() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBatchTagModal, setShowBatchTagModal] = useState(false);
+  const [editingContactId, setEditingContactId] = useState<number | "new" | null>(null);
   const [syncDirection, setSyncDirection] = useState<SyncDirection | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -327,6 +329,27 @@ export function App() {
     setSyncDirection(null);
   }
 
+  async function handleContactSaved(contact: Contact) {
+    setContacts((prev) => {
+      const exists = prev.some((c) => c.id === contact.id);
+      return exists ? prev.map((c) => (c.id === contact.id ? contact : c)) : [...prev, contact];
+    });
+    setSelectedContactId(contact.id);
+    setEditingContactId(null);
+    try {
+      const tagsData = await fetchTags();
+      setTags(tagsData.tags);
+    } catch {
+      // Keep the existing tag list if the refresh fails; it'll catch up
+      // next time tags are reloaded.
+    }
+  }
+
+  function handleSelectContact(id: number) {
+    setEditingContactId(null);
+    setSelectedContactId(id);
+  }
+
   async function handleBatchAddTags(newTags: string[]) {
     const response = await batchAddTags([...selectedIds], newTags);
     const updatedById = new Map(response.contacts.map((contact) => [contact.id, contact]));
@@ -351,7 +374,7 @@ export function App() {
         contacts={visibleContacts}
         grouped={grouped}
         selectedContactId={selectedContactId}
-        onSelectContact={setSelectedContactId}
+        onSelectContact={handleSelectContact}
         lettersPresent={lettersPresent}
         onJumpToLetter={jumpToLetter}
         listRef={listRef}
@@ -363,6 +386,7 @@ export function App() {
         onSelectAllVisible={selectAllVisible}
         onClearSelection={() => setSelectedIds(new Set())}
         onAddTags={() => setShowBatchTagModal(true)}
+        onNewContact={() => setEditingContactId("new")}
         syncing={syncing}
         syncDirection={syncDirection}
         syncMessage={syncMessage}
@@ -372,8 +396,16 @@ export function App() {
       />
 
       <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", p: 4 }}>
-        {selectedContact ? (
-          <ContactDetail contact={selectedContact} />
+        {editingContactId !== null ? (
+          <ContactForm
+            key={editingContactId}
+            contact={editingContactId === "new" ? null : contacts.find((c) => c.id === editingContactId) ?? null}
+            allTags={tags}
+            onCancel={() => setEditingContactId(null)}
+            onSaved={handleContactSaved}
+          />
+        ) : selectedContact ? (
+          <ContactDetail contact={selectedContact} onEdit={() => setEditingContactId(selectedContact.id)} />
         ) : selectedContactId !== null ? (
           <Alert severity="error">Contact not found.</Alert>
         ) : (
