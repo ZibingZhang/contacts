@@ -254,6 +254,35 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
   const [datedEnd, setDatedEnd] = useState(() => toDateInputValue(source?.dated?.end));
   const [tags, setTags] = useState<string[]>(source?.tags ?? []);
 
+  function buildSnapshot() {
+    return JSON.stringify({
+      name,
+      birthday,
+      phones: phones.rows,
+      emails: emails.rows,
+      addresses: addresses.rows,
+      favorites: favorites.rows,
+      education,
+      facebookUsername,
+      facebookUserId,
+      gameCenterUsername,
+      gameCenterLink,
+      instagramUsername,
+      instagramFinstas,
+      notes,
+      friendsFriend,
+      datedStart,
+      datedEnd,
+      tags,
+    });
+  }
+
+  const initialSnapshotRef = useRef<string | null>(null);
+  if (initialSnapshotRef.current === null) {
+    initialSnapshotRef.current = buildSnapshot();
+  }
+  const isDirty = buildSnapshot() !== initialSnapshotRef.current;
+
   function buildPayload(): Record<string, unknown> {
     const payload: Record<string, unknown> = {};
 
@@ -371,7 +400,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
           <Button onClick={onCancel} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button variant="contained" onClick={handleSubmit} disabled={isSubmitting}>
+          <Button variant="contained" onClick={handleSubmit} disabled={isSubmitting || !isDirty}>
             {isSubmitting ? "Saving…" : "Save"}
           </Button>
         </Box>
