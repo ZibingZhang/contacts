@@ -182,12 +182,17 @@ function RemovableRow({ onRemove, children }: { onRemove: () => void; children: 
 
 interface ContactFormProps {
   contact: Contact | null;
+  // When set (and `contact` is null, i.e. creating a new contact), prefills
+  // the form fields from this contact without copying its id or affecting
+  // the create-vs-update decision below — used by the "Copy" action.
+  prefillFrom?: Contact | null;
   allTags: TagCount[];
   onCancel: () => void;
   onSaved: (contact: Contact) => void;
 }
 
-export function ContactForm({ contact, allTags, onCancel, onSaved }: ContactFormProps) {
+export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }: ContactFormProps) {
+  const source = contact ?? prefillFrom ?? null;
   const [options, setOptions] = useState<ContactFieldOptions | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -207,19 +212,19 @@ export function ContactForm({ contact, allTags, onCancel, onSaved }: ContactForm
   }, []);
 
   const [name, setName] = useState({
-    prefix: contact?.name?.prefix ?? "",
-    first_name: contact?.name?.first_name ?? "",
-    middle_name: contact?.name?.middle_name ?? "",
-    last_name: contact?.name?.last_name ?? "",
-    nickname: contact?.name?.nickname ?? "",
-    suffix: contact?.name?.suffix ?? "",
-    chinese_name: contact?.name?.chinese_name ?? "",
+    prefix: source?.name?.prefix ?? "",
+    first_name: source?.name?.first_name ?? "",
+    middle_name: source?.name?.middle_name ?? "",
+    last_name: source?.name?.last_name ?? "",
+    nickname: source?.name?.nickname ?? "",
+    suffix: source?.name?.suffix ?? "",
+    chinese_name: source?.name?.chinese_name ?? "",
   });
-  const [birthday, setBirthday] = useState(() => toDateInputValue(contact?.birthday));
+  const [birthday, setBirthday] = useState(() => toDateInputValue(source?.birthday));
 
-  const phones = useRowList<PhoneRow>(phonesToRows(contact?.phone_numbers), () => ({ label: "", countryCode: 1, number: "" }));
-  const emails = useRowList<EmailRow>(emailsToRows(contact?.email_addresses), () => ({ label: "", address: "" }));
-  const addresses = useRowList<AddressRow>(addressesToRows(contact?.street_addresses), () => ({
+  const phones = useRowList<PhoneRow>(phonesToRows(source?.phone_numbers), () => ({ label: "", countryCode: 1, number: "" }));
+  const emails = useRowList<EmailRow>(emailsToRows(source?.email_addresses), () => ({ label: "", address: "" }));
+  const addresses = useRowList<AddressRow>(addressesToRows(source?.street_addresses), () => ({
     label: "",
     street: "",
     city: "",
@@ -227,27 +232,27 @@ export function ContactForm({ contact, allTags, onCancel, onSaved }: ContactForm
     postalCode: "",
     country: "",
   }));
-  const favorites = useRowList<FavoriteRow>(favoritesToRows(contact?.favorite), () => ({ key: "", value: "" }));
+  const favorites = useRowList<FavoriteRow>(favoritesToRows(source?.favorite), () => ({ key: "", value: "" }));
 
-  const [education, setEducation] = useState(() => educationToForm(contact?.education));
+  const [education, setEducation] = useState(() => educationToForm(source?.education));
   function updateEducation(level: EducationLevel, patch: Partial<EducationRowState>) {
     setEducation((prev) => ({ ...prev, [level]: { ...prev[level], ...patch } }));
   }
 
-  const [facebookUsername, setFacebookUsername] = useState(contact?.social_profiles?.facebook?.username ?? "");
-  const [facebookUserId, setFacebookUserId] = useState(contact?.social_profiles?.facebook?.user_id ?? "");
-  const [gameCenterUsername, setGameCenterUsername] = useState(contact?.social_profiles?.game_center?.username ?? "");
-  const [gameCenterLink, setGameCenterLink] = useState(contact?.social_profiles?.game_center?.link ?? "");
-  const [instagramUsername, setInstagramUsername] = useState(contact?.social_profiles?.instagram?.username ?? "");
+  const [facebookUsername, setFacebookUsername] = useState(source?.social_profiles?.facebook?.username ?? "");
+  const [facebookUserId, setFacebookUserId] = useState(source?.social_profiles?.facebook?.user_id ?? "");
+  const [gameCenterUsername, setGameCenterUsername] = useState(source?.social_profiles?.game_center?.username ?? "");
+  const [gameCenterLink, setGameCenterLink] = useState(source?.social_profiles?.game_center?.link ?? "");
+  const [instagramUsername, setInstagramUsername] = useState(source?.social_profiles?.instagram?.username ?? "");
   const [instagramFinstas, setInstagramFinstas] = useState(
-    (contact?.social_profiles?.instagram?.finsta_usernames ?? []).join(", ")
+    (source?.social_profiles?.instagram?.finsta_usernames ?? []).join(", ")
   );
 
-  const [notes, setNotes] = useState(contact?.notes ?? "");
-  const [friendsFriend, setFriendsFriend] = useState(contact?.friends_friend ?? "");
-  const [datedStart, setDatedStart] = useState(() => toDateInputValue(contact?.dated?.start));
-  const [datedEnd, setDatedEnd] = useState(() => toDateInputValue(contact?.dated?.end));
-  const [tags, setTags] = useState<string[]>(contact?.tags ?? []);
+  const [notes, setNotes] = useState(source?.notes ?? "");
+  const [friendsFriend, setFriendsFriend] = useState(source?.friends_friend ?? "");
+  const [datedStart, setDatedStart] = useState(() => toDateInputValue(source?.dated?.start));
+  const [datedEnd, setDatedEnd] = useState(() => toDateInputValue(source?.dated?.end));
+  const [tags, setTags] = useState<string[]>(source?.tags ?? []);
 
   function buildPayload(): Record<string, unknown> {
     const payload: Record<string, unknown> = {};

@@ -65,6 +65,7 @@ export function App() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBatchTagModal, setShowBatchTagModal] = useState(false);
   const [editingContactId, setEditingContactId] = useState<number | "new" | null>(null);
+  const [copySourceContact, setCopySourceContact] = useState<Contact | null>(null);
   const [syncDirection, setSyncDirection] = useState<SyncDirection | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -336,6 +337,7 @@ export function App() {
     });
     setSelectedContactId(contact.id);
     setEditingContactId(null);
+    setCopySourceContact(null);
     try {
       const tagsData = await fetchTags();
       setTags(tagsData.tags);
@@ -347,7 +349,13 @@ export function App() {
 
   function handleSelectContact(id: number) {
     setEditingContactId(null);
+    setCopySourceContact(null);
     setSelectedContactId(id);
+  }
+
+  function handleCopyContact(contact: Contact) {
+    setCopySourceContact(contact);
+    setEditingContactId("new");
   }
 
   async function handleBatchAddTags(newTags: string[]) {
@@ -386,7 +394,10 @@ export function App() {
         onSelectAllVisible={selectAllVisible}
         onClearSelection={() => setSelectedIds(new Set())}
         onAddTags={() => setShowBatchTagModal(true)}
-        onNewContact={() => setEditingContactId("new")}
+        onNewContact={() => {
+          setCopySourceContact(null);
+          setEditingContactId("new");
+        }}
         syncing={syncing}
         syncDirection={syncDirection}
         syncMessage={syncMessage}
@@ -400,12 +411,20 @@ export function App() {
           <ContactForm
             key={editingContactId}
             contact={editingContactId === "new" ? null : contacts.find((c) => c.id === editingContactId) ?? null}
+            prefillFrom={editingContactId === "new" ? copySourceContact : null}
             allTags={tags}
-            onCancel={() => setEditingContactId(null)}
+            onCancel={() => {
+              setEditingContactId(null);
+              setCopySourceContact(null);
+            }}
             onSaved={handleContactSaved}
           />
         ) : selectedContact ? (
-          <ContactDetail contact={selectedContact} onEdit={() => setEditingContactId(selectedContact.id)} />
+          <ContactDetail
+            contact={selectedContact}
+            onEdit={() => setEditingContactId(selectedContact.id)}
+            onCopy={() => handleCopyContact(selectedContact)}
+          />
         ) : selectedContactId !== null ? (
           <Alert severity="error">Contact not found.</Alert>
         ) : (

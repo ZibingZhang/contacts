@@ -16,7 +16,15 @@ import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
 
-function NameHeader({ contact, onEdit }: { contact: Contact; onEdit: () => void }) {
+function NameHeader({
+  contact,
+  onEdit,
+  onCopy,
+}: {
+  contact: Contact;
+  onEdit: () => void;
+  onCopy: () => void;
+}) {
   return (
     <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", mb: 4 }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
@@ -39,9 +47,14 @@ function NameHeader({ contact, onEdit }: { contact: Contact; onEdit: () => void 
           )}
         </Box>
       </Box>
-      <Button id="edit-contact-button" variant="outlined" size="small" onClick={onEdit}>
-        Edit
-      </Button>
+      <Box sx={{ display: "flex", gap: 1 }}>
+        <Button id="copy-contact-button" variant="outlined" size="small" onClick={onCopy}>
+          Copy
+        </Button>
+        <Button id="edit-contact-button" variant="outlined" size="small" onClick={onEdit}>
+          Edit
+        </Button>
+      </Box>
     </Box>
   );
 }
@@ -74,7 +87,15 @@ function InstagramValue({ username, finstaUsernames }: { username: string; finst
   );
 }
 
-export function ContactDetail({ contact, onEdit }: { contact: Contact; onEdit: () => void }) {
+export function ContactDetail({
+  contact,
+  onEdit,
+  onCopy,
+}: {
+  contact: Contact;
+  onEdit: () => void;
+  onCopy: () => void;
+}) {
   const birthday = formatDate(contact.birthday);
 
   const socialRows = [];
@@ -115,7 +136,7 @@ export function ContactDetail({ contact, onEdit }: { contact: Contact; onEdit: (
 
   return (
     <>
-      <NameHeader contact={contact} onEdit={onEdit} />
+      <NameHeader contact={contact} onEdit={onEdit} onCopy={onCopy} />
 
       {birthday && <DetailSection title="Birthday" rows={[fieldRow("Birthday", birthday)]} />}
 
