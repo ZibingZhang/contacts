@@ -397,6 +397,19 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
 
       <Divider sx={{ my: 2 }} />
 
+      <Section title="Tags">
+        <Autocomplete
+          multiple
+          freeSolo
+          options={allTags.map(({ tag }) => tag)}
+          value={tags}
+          onChange={(_event, newValue) => setTags(Array.from(new Set(newValue.map((v) => v.trim()).filter(Boolean))))}
+          renderInput={(params) => <TextField {...params} size="small" placeholder="Type a tag and press Enter…" />}
+        />
+      </Section>
+
+      <Divider sx={{ my: 2 }} />
+
       <Section title="Birthday">
         <TextField
           label="Birthday"
@@ -630,19 +643,6 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
         <Button size="small" startIcon={<AddIcon />} onClick={favorites.add}>
           Add favorite
         </Button>
-      </Section>
-
-      <Divider sx={{ my: 2 }} />
-
-      <Section title="Tags">
-        <Autocomplete
-          multiple
-          freeSolo
-          options={allTags.map(({ tag }) => tag)}
-          value={tags}
-          onChange={(_event, newValue) => setTags(Array.from(new Set(newValue.map((v) => v.trim()).filter(Boolean))))}
-          renderInput={(params) => <TextField {...params} size="small" placeholder="Type a tag and press Enter…" />}
-        />
       </Section>
     </Box>
   );
