@@ -34,6 +34,7 @@ export function AlphaIndex({ hidden, lettersPresent, onJumpToLetter }: AlphaInde
         flexDirection: "column",
         flex: "0 0 16px",
         alignSelf: "flex-start",
+        ml: "auto",
         position: "sticky",
         top: "50%",
         transform: "translateY(-50%)",

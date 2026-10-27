@@ -18,7 +18,6 @@ export function SearchBar({ value, onChange }: SearchBarProps) {
       id="search-input"
       size="small"
       fullWidth
-      sx={{ mb: 2 }}
       placeholder="Search contacts…"
       aria-label="Search contacts"
       value={value}

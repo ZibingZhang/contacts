@@ -89,7 +89,7 @@ export function ContactList({
             />
           </ListItemIcon>
         )}
-        <ListItemText primary={displayName} />
+        <ListItemText primary={displayName} slotProps={{ primary: { noWrap: true } }} />
       </ListItemButton>
     );
   }
@@ -99,7 +99,7 @@ export function ContactList({
       component="div"
       id="contact-list"
       disablePadding
-      sx={{ flexGrow: 1, alignSelf: "flex-start", width: "100%" }}
+      sx={{ flexGrow: 1, alignSelf: "flex-start", minWidth: 0 }}
       ref={listRef}
     >
       {items}
