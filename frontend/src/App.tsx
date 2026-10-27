@@ -404,6 +404,10 @@ export function App() {
         syncError={syncError}
         onPull={() => handleStartSync("pull")}
         onPush={() => handleStartSync("push")}
+        onDismissSyncStatus={() => {
+          setSyncMessage(null);
+          setSyncError(null);
+        }}
       />
 
       <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", p: 4 }}>

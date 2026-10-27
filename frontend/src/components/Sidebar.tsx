@@ -67,6 +67,7 @@ interface SidebarProps {
   syncError: string | null;
   onPull: () => void;
   onPush: () => void;
+  onDismissSyncStatus: () => void;
 }
 
 export function Sidebar({
@@ -100,6 +101,7 @@ export function Sidebar({
   syncError,
   onPull,
   onPush,
+  onDismissSyncStatus,
 }: SidebarProps) {
   const [width, setWidth] = useState(readStoredWidth);
   const [collapsed, setCollapsed] = useState(readStoredCollapsed);
@@ -269,7 +271,9 @@ export function Sidebar({
 
       {(syncMessage || syncError) && (
         <Box id="sync-status" sx={{ px: 1, pt: 1 }}>
-          <Alert severity={syncError ? "error" : "success"}>{syncError ?? syncMessage}</Alert>
+          <Alert severity={syncError ? "error" : "success"} onClose={onDismissSyncStatus}>
+            {syncError ?? syncMessage}
+          </Alert>
         </Box>
       )}
 
