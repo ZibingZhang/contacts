@@ -35,7 +35,7 @@ function networkErrorMessage(error: unknown): string {
   return `Could not reach the contacts API at ${apiBaseUrl()} — is \`python -m contacts serve\` running?`;
 }
 
-function paramsFromLocation(): { query: string; filters: SelectedFilter[] } {
+function paramsFromLocation(): { query: string; filters: SelectedFilter[]; contactId: number | null } {
   const params = new URLSearchParams(window.location.search);
   const filters: SelectedFilter[] = [];
   for (const raw of params.getAll("filter")) {
@@ -43,9 +43,12 @@ function paramsFromLocation(): { query: string; filters: SelectedFilter[] } {
     if (separatorIndex === -1) continue;
     filters.push({ field: raw.slice(0, separatorIndex), value: raw.slice(separatorIndex + 1) });
   }
+  const contactParam = params.get("contact");
+  const contactId = contactParam !== null && /^\d+$/.test(contactParam) ? Number(contactParam) : null;
   return {
     query: params.get("q") ?? "",
     filters,
+    contactId,
   };
 }
 
@@ -66,7 +69,7 @@ export function App() {
   const [tags, setTags] = useState<TagCount[]>([]);
   const [selectedFilters, setSelectedFilters] = useState<SelectedFilter[]>(() => paramsFromLocation().filters);
   const [searchQuery, setSearchQuery] = useState(() => paramsFromLocation().query);
-  const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<number | null>(() => paramsFromLocation().contactId);
   const [listStatus, setListStatus] = useState<ListStatus>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -128,10 +131,15 @@ export function App() {
     for (const filter of selectedFilters) {
       params.append("filter", `${filter.field}=${filter.value}`);
     }
+    if (selectedContactId !== null) {
+      params.set("contact", String(selectedContactId));
+    } else {
+      params.delete("contact");
+    }
     const queryString = params.toString();
     const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ""}${window.location.hash}`;
     window.history.replaceState(null, "", newUrl);
-  }, [searchQuery, selectedFilters]);
+  }, [searchQuery, selectedFilters, selectedContactId]);
 
   // Debounced so fast typing doesn't kick off a filter pass per keystroke;
   // the actual filtering then runs in a Web Worker, off the main thread.
