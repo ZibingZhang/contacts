@@ -564,6 +564,20 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
     return payload;
   }
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        if (isDirty && !isSubmitting) handleSubmit();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        if (!isSubmitting) onCancel();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  });
+
   async function handleSubmit() {
     if (isSubmitting) return;
     setIsSubmitting(true);

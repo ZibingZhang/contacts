@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { Contact } from "../types";
 import {
   buildDisplayName,
@@ -15,6 +16,11 @@ import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+}
 
 function NameHeader({
   contact,
@@ -96,6 +102,21 @@ export function ContactDetail({
   onEdit: () => void;
   onCopy: () => void;
 }) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) return;
+      if (event.key === "e" || event.key === "E") {
+        event.preventDefault();
+        onEdit();
+      } else if (event.key === "c" || event.key === "C") {
+        event.preventDefault();
+        onCopy();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onEdit, onCopy]);
+
   const birthday = formatDate(contact.birthday);
 
   const socialRows = [];
