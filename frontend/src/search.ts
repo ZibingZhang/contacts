@@ -179,16 +179,3 @@ export function contactLetter(contact: Contact): string {
   const ch = (first || last).trim().charAt(0).toUpperCase();
   return /[A-Z]/.test(ch) ? ch : "#";
 }
-
-// A contact matches the tag filter if it has all of the selected tags
-// (AND across the facet), or if no tags are selected at all.
-export function contactMatchesTags(contact: Contact, tags: Set<string>): boolean {
-  if (tags.size === 0) {
-    return true;
-  }
-  if (!contact.tags) {
-    return false;
-  }
-  const contactTags = new Set(contact.tags);
-  return Array.from(tags).every((tag) => contactTags.has(tag));
-}

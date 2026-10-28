@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
-import type { Contact, TagCount } from "../types";
+import type { Contact } from "../types";
+import type { SelectedFilter } from "../filters";
 import type { SyncDirection } from "./SyncReviewModal";
 import { SearchBar } from "./SearchBar";
-import { TagFilterDropdown } from "./TagFilterDropdown";
+import { FilterDropdown } from "./FilterDropdown";
 import { ContactList } from "./ContactList";
 import { AlphaIndex } from "./AlphaIndex";
 import Box from "@mui/material/Box";
@@ -39,10 +40,10 @@ function readStoredCollapsed(): boolean {
 interface SidebarProps {
   searchQuery: string;
   onSearchChange: (value: string) => void;
-  tags: TagCount[];
-  selectedTags: Set<string>;
-  onToggleTag: (tag: string) => void;
-  onClearTags: () => void;
+  allContacts: Contact[];
+  selectedFilters: SelectedFilter[];
+  onToggleFilter: (filter: SelectedFilter) => void;
+  onClearFilters: () => void;
   listStatus: ListStatus;
   loadError: string | null;
   contacts: Contact[];
@@ -73,10 +74,10 @@ interface SidebarProps {
 export function Sidebar({
   searchQuery,
   onSearchChange,
-  tags,
-  selectedTags,
-  onToggleTag,
-  onClearTags,
+  allContacts,
+  selectedFilters,
+  onToggleFilter,
+  onClearFilters,
   listStatus,
   loadError,
   contacts,
@@ -232,7 +233,12 @@ export function Sidebar({
           <Box sx={{ flexGrow: 1 }}>
             <SearchBar value={searchQuery} onChange={onSearchChange} />
           </Box>
-          <TagFilterDropdown tags={tags} selectedTags={selectedTags} onToggleTag={onToggleTag} onClear={onClearTags} />
+          <FilterDropdown
+            contacts={allContacts}
+            selectedFilters={selectedFilters}
+            onToggleFilter={onToggleFilter}
+            onClear={onClearFilters}
+          />
         </Box>
 
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>

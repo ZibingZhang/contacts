@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from "react";
+import { memo, type ReactNode, type RefObject } from "react";
 import type { Contact } from "../types";
 import { buildDisplayName } from "../format";
 import { contactLetter } from "../search";
@@ -23,7 +23,14 @@ interface ContactListProps {
 // Renders the contact list. When `grouped` is set, contacts are assumed to
 // already be sorted so that same-letter contacts are contiguous, and a
 // sticky letter header is inserted before each new letter group.
-export function ContactList({
+//
+// Memoized because this list can run into the thousands of items — each a
+// handful of MUI components — so re-running this on every keystroke in the
+// search box (which re-renders the whole sidebar) is a visible jank source
+// even when `contacts` itself hasn't changed yet (e.g. while debounced
+// filtering is still pending). Callers must pass stable callback
+// references (e.g. via `useCallback`) or this bailout does nothing.
+export const ContactList = memo(function ContactList({
   contacts,
   grouped,
   selectedContactId,
@@ -105,4 +112,4 @@ export function ContactList({
       {items}
     </List>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchContacts,
   fetchTags,
@@ -15,7 +15,9 @@ import {
   ApiError,
 } from "./api";
 import type { Contact, TagCount, SyncRequiresVerification, SyncReview, SyncResult } from "./types";
-import { filterContacts, contactMatchesTags, contactLetter } from "./search";
+import { contactLetter } from "./search";
+import { sameFilter, type SelectedFilter } from "./filters";
+import { useDebouncedValue, useFilteredContactIds } from "./hooks";
 import { Sidebar, type ListStatus } from "./components/Sidebar";
 import { ContactDetail } from "./components/ContactDetail";
 import { BatchTagModal } from "./components/BatchTagModal";
@@ -33,11 +35,17 @@ function networkErrorMessage(error: unknown): string {
   return `Could not reach the contacts API at ${apiBaseUrl()} — is \`python -m contacts serve\` running?`;
 }
 
-function paramsFromLocation(): { query: string; tags: Set<string> } {
+function paramsFromLocation(): { query: string; filters: SelectedFilter[] } {
   const params = new URLSearchParams(window.location.search);
+  const filters: SelectedFilter[] = [];
+  for (const raw of params.getAll("filter")) {
+    const separatorIndex = raw.indexOf("=");
+    if (separatorIndex === -1) continue;
+    filters.push({ field: raw.slice(0, separatorIndex), value: raw.slice(separatorIndex + 1) });
+  }
   return {
     query: params.get("q") ?? "",
-    tags: new Set(params.getAll("tag")),
+    filters,
   };
 }
 
@@ -56,7 +64,7 @@ const SYNC_API: Record<SyncDirection, SyncApi> = {
 export function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(() => paramsFromLocation().tags);
+  const [selectedFilters, setSelectedFilters] = useState<SelectedFilter[]>(() => paramsFromLocation().filters);
   const [searchQuery, setSearchQuery] = useState(() => paramsFromLocation().query);
   const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
   const [listStatus, setListStatus] = useState<ListStatus>("loading");
@@ -116,27 +124,36 @@ export function App() {
     } else {
       params.delete("q");
     }
-    params.delete("tag");
-    for (const tag of selectedTags) {
-      params.append("tag", tag);
+    params.delete("filter");
+    for (const filter of selectedFilters) {
+      params.append("filter", `${filter.field}=${filter.value}`);
     }
     const queryString = params.toString();
     const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ""}${window.location.hash}`;
     window.history.replaceState(null, "", newUrl);
-  }, [searchQuery, selectedTags]);
+  }, [searchQuery, selectedFilters]);
 
-  const tagFilteredContacts = useMemo(
-    () => contacts.filter((contact) => contactMatchesTags(contact, selectedTags)),
-    [contacts, selectedTags]
+  // Debounced so fast typing doesn't kick off a filter pass per keystroke;
+  // the actual filtering then runs in a Web Worker, off the main thread.
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 100);
+  const { ids: visibleContactIds, query: appliedSearchQuery } = useFilteredContactIds(
+    contacts,
+    debouncedSearchQuery,
+    selectedFilters
   );
+  const contactsById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
   const visibleContacts = useMemo(
-    () => filterContacts(tagFilteredContacts, searchQuery),
-    [tagFilteredContacts, searchQuery]
+    () => visibleContactIds.flatMap((id) => (contactsById.has(id) ? [contactsById.get(id)!] : [])),
+    [visibleContactIds, contactsById]
   );
 
   // Letter sections and the alphabet index only make sense when contacts are
   // in alphabetical order; an active search re-ranks by relevance instead.
-  const grouped = !searchQuery.trim();
+  // Keyed off the query the *worker* actually applied (not the debounced
+  // input directly) so this never flips ahead of `visibleContacts` itself —
+  // otherwise a list still in relevance order from the previous query could
+  // briefly render as "grouped", scattering stray one-contact letter headers.
+  const grouped = !appliedSearchQuery.trim();
   const lettersPresent = useMemo(() => new Set(visibleContacts.map(contactLetter)), [visibleContacts]);
 
   const selectedContact = contacts.find((contact) => contact.id === selectedContactId) ?? null;
@@ -163,7 +180,9 @@ export function App() {
   // then a no-op, which is why jumping to an earlier letter (up) silently
   // failed while jumping to a later one (down) worked. Contact items aren't
   // sticky, so their position is always reported accurately.
-  function jumpToLetter(letter: string) {
+  // Stable identity (it only ever touches refs/the DOM) so it doesn't defeat
+  // AlphaIndex's memoization on every keystroke.
+  const jumpToLetter = useCallback((letter: string) => {
     const header = document.getElementById(`contact-letter-${letter}`);
     if (!header) {
       return;
@@ -174,7 +193,8 @@ export function App() {
     } else {
       header.scrollIntoView({ block: "start" });
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Moves the selection by `delta` positions within the currently displayed
   // list, wrapping to the first/last contact if nothing is selected yet.
@@ -226,16 +246,12 @@ export function App() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [visibleContacts, selectedContactId]);
 
-  function toggleTag(tag: string) {
-    setSelectedTags((prev) => {
-      const next = new Set(prev);
-      if (next.has(tag)) {
-        next.delete(tag);
-      } else {
-        next.add(tag);
-      }
-      return next;
-    });
+  function toggleFilter(filter: SelectedFilter) {
+    setSelectedFilters((prev) =>
+      prev.some((selected) => sameFilter(selected, filter))
+        ? prev.filter((selected) => !sameFilter(selected, filter))
+        : [...prev, filter]
+    );
   }
 
   function toggleSelectionMode() {
@@ -247,7 +263,9 @@ export function App() {
     });
   }
 
-  function toggleContactSelection(id: number) {
+  // Stable identity so it doesn't defeat ContactList's memoization on every
+  // keystroke in the search box.
+  const toggleContactSelection = useCallback((id: number) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -257,7 +275,7 @@ export function App() {
       }
       return next;
     });
-  }
+  }, []);
 
   function selectAllVisible() {
     setSelectedIds(new Set(visibleContacts.map((contact) => contact.id)));
@@ -347,11 +365,13 @@ export function App() {
     }
   }
 
-  function handleSelectContact(id: number) {
+  // Stable identity so it doesn't defeat ContactList's memoization on every
+  // keystroke in the search box.
+  const handleSelectContact = useCallback((id: number) => {
     setEditingContactId(null);
     setCopySourceContact(null);
     setSelectedContactId(id);
-  }
+  }, []);
 
   function handleCopyContact(contact: Contact) {
     setCopySourceContact(contact);
@@ -373,10 +393,10 @@ export function App() {
       <Sidebar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        tags={tags}
-        selectedTags={selectedTags}
-        onToggleTag={toggleTag}
-        onClearTags={() => setSelectedTags(new Set())}
+        allContacts={contacts}
+        selectedFilters={selectedFilters}
+        onToggleFilter={toggleFilter}
+        onClearFilters={() => setSelectedFilters([])}
         listStatus={listStatus}
         loadError={loadError}
         contacts={visibleContacts}
