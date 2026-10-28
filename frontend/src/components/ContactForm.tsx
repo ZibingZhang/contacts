@@ -584,7 +584,19 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
 
   return (
     <Box id="contact-form">
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 4 }}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          position: "sticky",
+          top: 0,
+          zIndex: 2,
+          pt: 4,
+          mb: 4,
+          backgroundColor: "background.paper",
+        }}
+      >
         <Typography variant="h5">{contact ? "Edit Contact" : "New Contact"}</Typography>
         <Box sx={{ display: "flex", gap: 1 }}>
           <Button onClick={onCancel} disabled={isSubmitting}>

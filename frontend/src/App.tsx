@@ -438,7 +438,7 @@ export function App() {
         }}
       />
 
-      <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", p: 4 }}>
+      <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
         {editingContactId !== null ? (
           <ContactForm
             key={editingContactId}
@@ -451,16 +451,20 @@ export function App() {
             }}
             onSaved={handleContactSaved}
           />
-        ) : selectedContact ? (
-          <ContactDetail
-            contact={selectedContact}
-            onEdit={() => setEditingContactId(selectedContact.id)}
-            onCopy={() => handleCopyContact(selectedContact)}
-          />
-        ) : selectedContactId !== null ? (
-          <Alert severity="error">Contact not found.</Alert>
         ) : (
-          <Typography color="text.secondary">Select a contact to see their details.</Typography>
+          <Box sx={{ pt: 4 }}>
+            {selectedContact ? (
+              <ContactDetail
+                contact={selectedContact}
+                onEdit={() => setEditingContactId(selectedContact.id)}
+                onCopy={() => handleCopyContact(selectedContact)}
+              />
+            ) : selectedContactId !== null ? (
+              <Alert severity="error">Contact not found.</Alert>
+            ) : (
+              <Typography color="text.secondary">Select a contact to see their details.</Typography>
+            )}
+          </Box>
         )}
       </Box>
 
