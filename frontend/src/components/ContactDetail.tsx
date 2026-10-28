@@ -115,6 +115,15 @@ export function ContactDetail({
       )
     );
   }
+  if (contact.social_profiles?.linkedin) {
+    const { linkedin } = contact.social_profiles;
+    socialRows.push(
+      fieldRow(
+        "LinkedIn",
+        <ExternalLink href={`https://www.linkedin.com/in/${linkedin.username}`}>{linkedin.username}</ExternalLink>
+      )
+    );
+  }
 
   const miscRows = [];
   if (contact.notes) {

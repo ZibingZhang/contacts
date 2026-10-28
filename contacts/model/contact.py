@@ -112,10 +112,16 @@ class InstagramProfile(dataclasses_utils.DataClassJsonMixin):
 
 
 @dataclasses.dataclass(repr=False)
+class LinkedInProfile(dataclasses_utils.DataClassJsonMixin):
+    username: str
+
+
+@dataclasses.dataclass(repr=False)
 class SocialProfiles(dataclasses_utils.DataClassJsonMixin):
     facebook: FacebookProfile | None = None
     game_center: GameCenterProfile | None = None
     instagram: InstagramProfile | None = None
+    linkedin: LinkedInProfile | None = None
 
 
 @dataclasses.dataclass(repr=False)

@@ -54,10 +54,15 @@ export interface InstagramProfile {
   finsta_usernames?: string[];
 }
 
+export interface LinkedInProfile {
+  username: string;
+}
+
 export interface SocialProfiles {
   facebook?: FacebookProfile;
   game_center?: GameCenterProfile;
   instagram?: InstagramProfile;
+  linkedin?: LinkedInProfile;
 }
 
 export interface DateRange {

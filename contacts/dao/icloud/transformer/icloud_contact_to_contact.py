@@ -154,6 +154,12 @@ def _transform_social_profiles(
                 social_profiles.instagram = model.InstagramProfile(
                     username=icloud_profile.user
                 )
+            case "LINKEDIN":
+                if icloud_profile.user is None:
+                    raise ValueError("Missing username for LinkedIn profile")
+                social_profiles.linkedin = model.LinkedInProfile(
+                    username=icloud_profile.user
+                )
             case "instagram.com":
                 if icloud_profile.field is None:
                     raise ValueError("Missing username for Instagram profile")

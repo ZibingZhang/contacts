@@ -133,6 +133,15 @@ def _transform_social_profiles(
                 user=instagram_profile.username,
             )
         )
+    if social_profiles.linkedin is not None:
+        linkedin_profile = social_profiles.linkedin
+        icloud_profiles.append(
+            icloud.model.Profile(
+                field=f"https://www.linkedin.com/in/{linkedin_profile.username}",
+                label="LINKEDIN",
+                user=linkedin_profile.username,
+            )
+        )
     return icloud_profiles
 
 

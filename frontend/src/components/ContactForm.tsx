@@ -247,6 +247,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
   const [instagramFinstas, setInstagramFinstas] = useState(
     (source?.social_profiles?.instagram?.finsta_usernames ?? []).join(", ")
   );
+  const [linkedinUsername, setLinkedinUsername] = useState(source?.social_profiles?.linkedin?.username ?? "");
 
   const [notes, setNotes] = useState(source?.notes ?? "");
   const [friendsFriend, setFriendsFriend] = useState(source?.friends_friend ?? "");
@@ -269,6 +270,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
       gameCenterLink,
       instagramUsername,
       instagramFinstas,
+      linkedinUsername,
       notes,
       friendsFriend,
       datedStart,
@@ -355,6 +357,9 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
           ? { finsta_usernames: instagramFinstas.split(",").map((v) => v.trim()).filter(Boolean) }
           : {}),
       };
+    }
+    if (linkedinUsername.trim()) {
+      socialProfiles.linkedin = { username: linkedinUsername.trim() };
     }
     if (Object.keys(socialProfiles).length) payload.social_profiles = socialProfiles;
 
@@ -626,6 +631,13 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
             size="small"
             placeholder="Comma-separated"
           />
+        </RowGrid>
+
+        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5, mt: 2 }}>
+          LinkedIn
+        </Typography>
+        <RowGrid>
+          <TextField label="Username" value={linkedinUsername} onChange={(e) => setLinkedinUsername(e.target.value)} size="small" />
         </RowGrid>
       </Section>
 

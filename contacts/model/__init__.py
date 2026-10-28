@@ -14,6 +14,7 @@ ICloudPhotoCrop = contact.ICloudPhotoCrop
 FacebookProfile = contact.FacebookProfile
 GameCenterProfile = contact.GameCenterProfile
 InstagramProfile = contact.InstagramProfile
+LinkedInProfile = contact.LinkedInProfile
 ICloudPhoto = contact.ICloudPhoto
 HighSchool = contact.HighSchool
 University = contact.University
