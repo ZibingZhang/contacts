@@ -55,22 +55,41 @@ export interface FilterValueCount {
   count: number;
 }
 
+// Sentinel standing in for "this contact has no value for this field" so it
+// can flow through the same {field, value} shape as every real value.
+// Unlikely to collide with real contact data.
+export const NONE_FILTER_VALUE = "__none__";
+
+export function isNoneFilterValue(value: string): boolean {
+  return value === NONE_FILTER_VALUE;
+}
+
 export function sameFilter(a: SelectedFilter, b: SelectedFilter): boolean {
   return a.field === b.field && a.value === b.value;
 }
 
 // Distinct values (with counts) a field takes across `contacts`, sorted by
-// how common they are so the most useful filters surface first.
+// how common they are so the most useful filters surface first. Contacts
+// with no value for the field are counted under NONE_FILTER_VALUE so "no
+// value" can be filtered on like any other value.
 export function countFilterValues(contacts: Contact[], field: FilterField): FilterValueCount[] {
   const counts = new Map<string, number>();
+  let noneCount = 0;
   for (const contact of contacts) {
-    for (const value of field.values(contact)) {
+    const values = field.values(contact);
+    if (values.length === 0) {
+      noneCount++;
+      continue;
+    }
+    for (const value of values) {
       counts.set(value, (counts.get(value) ?? 0) + 1);
     }
   }
-  return Array.from(counts.entries())
-    .map(([value, count]) => ({ value, count }))
-    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+  const result = Array.from(counts.entries()).map(([value, count]) => ({ value, count }));
+  if (noneCount > 0) {
+    result.push({ value: NONE_FILTER_VALUE, count: noneCount });
+  }
+  return result.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 }
 
 // Precomputes `countFilterValues` for every field in one pass over
@@ -90,6 +109,10 @@ export function contactMatchesFilters(contact: Contact, filters: SelectedFilter[
   }
   return filters.every(({ field, value }) => {
     const definition = FILTER_FIELDS_BY_ID.get(field);
-    return definition !== undefined && definition.values(contact).includes(value);
+    if (definition === undefined) {
+      return false;
+    }
+    const values = definition.values(contact);
+    return value === NONE_FILTER_VALUE ? values.length === 0 : values.includes(value);
   });
 }

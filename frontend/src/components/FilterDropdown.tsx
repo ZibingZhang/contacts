@@ -4,6 +4,7 @@ import {
   FILTER_FIELDS,
   FILTER_FIELDS_BY_ID,
   countAllFilterValues,
+  isNoneFilterValue,
   sameFilter,
   type FilterValueCount,
   type SelectedFilter,
@@ -24,6 +25,13 @@ import Box from "@mui/material/Box";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import SortByAlphaIcon from "@mui/icons-material/SortByAlpha";
+
+// Display label for a filter value — the "no value" sentinel reads as
+// "(None)" rather than its internal placeholder string.
+function filterValueLabel(value: string): string {
+  return isNoneFilterValue(value) ? "(None)" : value;
+}
 
 interface FilterDropdownProps {
   contacts: Contact[];
@@ -83,7 +91,7 @@ function VirtualValueList({ values, selectedFilters, fieldId, onToggleFilter, em
                 <ListItemIcon sx={{ minWidth: 0, mr: 1 }}>
                   <Checkbox edge="start" checked={checked} size="small" disableRipple tabIndex={-1} />
                 </ListItemIcon>
-                <ListItemText primary={value} slotProps={{ primary: { noWrap: true } }} />
+                <ListItemText primary={filterValueLabel(value)} slotProps={{ primary: { noWrap: true } }} />
                 <Chip label={count} size="small" variant="outlined" />
               </ListItemButton>
             );
@@ -101,6 +109,7 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [openFieldId, setOpenFieldId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
+  const [sortAlpha, setSortAlpha] = useState(false);
 
   const isOpen = Boolean(anchorEl);
   const activeField = openFieldId ? FILTER_FIELDS_BY_ID.get(openFieldId) ?? null : null;
@@ -109,6 +118,7 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
     setAnchorEl(null);
     setOpenFieldId(null);
     setSearchText("");
+    setSortAlpha(false);
   }
 
   function openField(fieldId: string) {
@@ -132,7 +142,14 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
   // happens on click.
   const valuesByField = useMemo(() => countAllFilterValues(contacts), [contacts]);
   const fieldValues = activeField ? valuesByField.get(activeField.id) ?? [] : [];
-  const visibleValues = query ? fieldValues.filter(({ value }) => value.toLowerCase().includes(query)) : fieldValues;
+  const matchingValues = query
+    ? fieldValues.filter(({ value }) => filterValueLabel(value).toLowerCase().includes(query))
+    : fieldValues;
+  // `fieldValues` already carries the default (most-common-first) order;
+  // only re-sort alphabetically when the user has asked for it.
+  const visibleValues = sortAlpha
+    ? [...matchingValues].sort((a, b) => filterValueLabel(a.value).localeCompare(filterValueLabel(b.value)))
+    : matchingValues;
 
   return (
     <>
@@ -175,6 +192,18 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
             />
+            {activeField && (
+              <IconButton
+                id="filter-sort-alpha"
+                size="small"
+                aria-label={sortAlpha ? "Sort by count" : "Sort alphabetically"}
+                title={sortAlpha ? "Sort by count" : "Sort alphabetically"}
+                color={sortAlpha ? "primary" : "default"}
+                onClick={() => setSortAlpha((current) => !current)}
+              >
+                <SortByAlphaIcon fontSize="small" />
+              </IconButton>
+            )}
           </Box>
 
           {!activeField && selectedFilters.length > 0 && (
@@ -185,7 +214,10 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
                     <ListItemIcon sx={{ minWidth: 0, mr: 1 }}>
                       <Checkbox edge="start" checked size="small" disableRipple tabIndex={-1} />
                     </ListItemIcon>
-                    <ListItemText primary={filter.value} secondary={FILTER_FIELDS_BY_ID.get(filter.field)?.label} />
+                    <ListItemText
+                      primary={filterValueLabel(filter.value)}
+                      secondary={FILTER_FIELDS_BY_ID.get(filter.field)?.label}
+                    />
                   </ListItemButton>
                 ))}
               </List>
@@ -195,7 +227,7 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
 
           {activeField ? (
             <VirtualValueList
-              key={`${activeField.id}::${query}`}
+              key={`${activeField.id}::${query}::${sortAlpha}`}
               values={visibleValues}
               selectedFilters={selectedFilters}
               fieldId={activeField.id}
