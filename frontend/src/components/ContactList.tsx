@@ -20,6 +20,59 @@ interface ContactListProps {
   onToggleSelect: (id: number) => void;
 }
 
+interface ContactRowProps {
+  contact: Contact;
+  isSelected: boolean;
+  isChecked: boolean;
+  selectionMode: boolean;
+  onSelect: (id: number) => void;
+  onToggleSelect: (id: number) => void;
+}
+
+// Its own memoized component so that selecting a contact — which changes
+// `isSelected` for exactly two rows out of what can be thousands — only
+// re-renders those two. Without this, ContactList's own memo bails as a
+// whole (see below) only when nothing changed; a selection change can't
+// bail that way since `selectedContactId` itself is the thing that
+// changed, so every row would otherwise re-run its MUI/emotion styling on
+// every click.
+const ContactRow = memo(function ContactRow({
+  contact,
+  isSelected,
+  isChecked,
+  selectionMode,
+  onSelect,
+  onToggleSelect,
+}: ContactRowProps) {
+  const displayName = buildDisplayName(contact.name, { includeNickname: false }) || `Contact ${contact.id}`;
+
+  return (
+    <ListItemButton
+      component="a"
+      href="#"
+      selected={isSelected}
+      data-contact-id={contact.id}
+      onClick={(event) => {
+        event.preventDefault();
+        selectionMode ? onToggleSelect(contact.id) : onSelect(contact.id);
+      }}
+    >
+      {selectionMode && (
+        <ListItemIcon sx={{ minWidth: 0, mr: 1 }}>
+          <Checkbox
+            edge="start"
+            checked={isChecked}
+            onChange={() => onToggleSelect(contact.id)}
+            onClick={(event) => event.stopPropagation()}
+            aria-label={`Select ${displayName}`}
+          />
+        </ListItemIcon>
+      )}
+      <ListItemText primary={displayName} slotProps={{ primary: { noWrap: true } }} />
+    </ListItemButton>
+  );
+});
+
 // Renders the contact list. When `grouped` is set, contacts are assumed to
 // already be sorted so that same-letter contacts are contiguous, and a
 // sticky letter header is inserted before each new letter group.
@@ -70,34 +123,16 @@ export const ContactList = memo(function ContactList({
       }
     }
 
-    const isChecked = selectedIds.has(contact.id);
-    const displayName = buildDisplayName(contact.name, { includeNickname: false }) || `Contact ${contact.id}`;
-
     items.push(
-      <ListItemButton
-        component="a"
-        href="#"
-        selected={contact.id === selectedContactId}
-        data-contact-id={contact.id}
+      <ContactRow
+        contact={contact}
+        isSelected={contact.id === selectedContactId}
+        isChecked={selectedIds.has(contact.id)}
+        selectionMode={selectionMode}
+        onSelect={onSelect}
+        onToggleSelect={onToggleSelect}
         key={contact.id}
-        onClick={(event) => {
-          event.preventDefault();
-          selectionMode ? onToggleSelect(contact.id) : onSelect(contact.id);
-        }}
-      >
-        {selectionMode && (
-          <ListItemIcon sx={{ minWidth: 0, mr: 1 }}>
-            <Checkbox
-              edge="start"
-              checked={isChecked}
-              onChange={() => onToggleSelect(contact.id)}
-              onClick={(event) => event.stopPropagation()}
-              aria-label={`Select ${displayName}`}
-            />
-          </ListItemIcon>
-        )}
-        <ListItemText primary={displayName} slotProps={{ primary: { noWrap: true } }} />
-      </ListItemButton>
+      />
     );
   }
 
