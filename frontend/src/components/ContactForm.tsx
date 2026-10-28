@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ContactFieldOptions, Contact, Education, EducationLevel, TagCount } from "../types";
 import { createContact, updateContact, fetchContactFieldOptions, ApiError } from "../api";
@@ -137,13 +137,17 @@ function useRowList<T extends IdRow>(initialRows: T[], makeRow: () => Omit<T, "i
     setRows((prev) => [...prev, { id: `r${nextId.current}`, ...makeRow() } as T]);
   }
 
-  function remove(id: string) {
+  // Stable identities (no deps) so row components below can be memoized:
+  // typing in one row's fields only re-renders that row instead of the
+  // whole form (and, for Education in particular, the hundreds of
+  // <MenuItem>s MUI builds for the school dropdowns on every keystroke).
+  const remove = useCallback((id: string) => {
     setRows((prev) => prev.filter((row) => row.id !== id));
-  }
+  }, []);
 
-  function update(id: string, patch: Partial<T>) {
+  const update = useCallback((id: string, patch: Partial<T>) => {
     setRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
-  }
+  }, []);
 
   return { rows, add, remove, update };
 }
@@ -179,6 +183,185 @@ function RemovableRow({ onRemove, children }: { onRemove: () => void; children: 
     </Box>
   );
 }
+
+const PhoneRowFields = memo(function PhoneRowFields({
+  row,
+  countryCodeOptions,
+  onUpdate,
+  onRemove,
+}: {
+  row: PhoneRow;
+  countryCodeOptions: { code: number; label: string }[];
+  onUpdate: (id: string, patch: Partial<PhoneRow>) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <RemovableRow onRemove={() => onRemove(row.id)}>
+      <TextField label="Label" value={row.label} onChange={(e) => onUpdate(row.id, { label: e.target.value })} size="small" />
+      <TextField
+        label="Country"
+        select
+        value={row.countryCode}
+        onChange={(e) => onUpdate(row.id, { countryCode: Number(e.target.value) })}
+        size="small"
+      >
+        {countryCodeOptions.map((option) => (
+          <MenuItem key={option.code} value={option.code}>
+            {option.label} (+{option.code})
+          </MenuItem>
+        ))}
+      </TextField>
+      <TextField label="Number" value={row.number} onChange={(e) => onUpdate(row.id, { number: e.target.value })} size="small" />
+    </RemovableRow>
+  );
+});
+
+const EmailRowFields = memo(function EmailRowFields({
+  row,
+  onUpdate,
+  onRemove,
+}: {
+  row: EmailRow;
+  onUpdate: (id: string, patch: Partial<EmailRow>) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <RemovableRow onRemove={() => onRemove(row.id)}>
+      <TextField label="Label" value={row.label} onChange={(e) => onUpdate(row.id, { label: e.target.value })} size="small" />
+      <TextField
+        label="Address"
+        type="email"
+        value={row.address}
+        onChange={(e) => onUpdate(row.id, { address: e.target.value })}
+        size="small"
+        sx={{ gridColumn: "span 2" }}
+      />
+    </RemovableRow>
+  );
+});
+
+const AddressRowFields = memo(function AddressRowFields({
+  row,
+  countryOptions,
+  onUpdate,
+  onRemove,
+}: {
+  row: AddressRow;
+  countryOptions: string[];
+  onUpdate: (id: string, patch: Partial<AddressRow>) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <RemovableRow onRemove={() => onRemove(row.id)}>
+      <TextField label="Label" value={row.label} onChange={(e) => onUpdate(row.id, { label: e.target.value })} size="small" />
+      <TextField
+        label="Street"
+        value={row.street}
+        onChange={(e) => onUpdate(row.id, { street: e.target.value })}
+        size="small"
+        multiline
+        placeholder="One line per address line"
+        sx={{ gridColumn: "span 2" }}
+      />
+      <TextField label="City" value={row.city} onChange={(e) => onUpdate(row.id, { city: e.target.value })} size="small" />
+      <TextField label="State" value={row.state} onChange={(e) => onUpdate(row.id, { state: e.target.value })} size="small" />
+      <TextField label="Postal Code" value={row.postalCode} onChange={(e) => onUpdate(row.id, { postalCode: e.target.value })} size="small" />
+      <TextField
+        label="Country"
+        select
+        value={row.country}
+        onChange={(e) => onUpdate(row.id, { country: e.target.value })}
+        size="small"
+      >
+        <MenuItem value="">—</MenuItem>
+        {countryOptions.map((country) => (
+          <MenuItem key={country} value={country}>
+            {country}
+          </MenuItem>
+        ))}
+      </TextField>
+    </RemovableRow>
+  );
+});
+
+const FavoriteRowFields = memo(function FavoriteRowFields({
+  row,
+  onUpdate,
+  onRemove,
+}: {
+  row: FavoriteRow;
+  onUpdate: (id: string, patch: Partial<FavoriteRow>) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <RemovableRow onRemove={() => onRemove(row.id)}>
+      <TextField label="Key" value={row.key} onChange={(e) => onUpdate(row.id, { key: e.target.value })} size="small" placeholder="e.g. color" />
+      <TextField label="Value" value={row.value} onChange={(e) => onUpdate(row.id, { value: e.target.value })} size="small" />
+    </RemovableRow>
+  );
+});
+
+const EducationLevelFields = memo(function EducationLevelFields({
+  level,
+  row,
+  schoolOptions,
+  onUpdate,
+}: {
+  level: EducationLevel;
+  row: EducationRowState;
+  schoolOptions: string[];
+  onUpdate: (level: EducationLevel, patch: Partial<EducationRowState>) => void;
+}) {
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+        {EDUCATION_LABELS[level]}
+      </Typography>
+      <RowGrid>
+        <TextField
+          label="School"
+          select
+          value={row.name}
+          onChange={(e) => onUpdate(level, { name: e.target.value })}
+          size="small"
+          sx={{ gridColumn: "span 2" }}
+        >
+          <MenuItem value="">—</MenuItem>
+          {schoolOptions.map((school) => (
+            <MenuItem key={school} value={school}>
+              {school}
+            </MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          label="Graduation Year"
+          type="number"
+          value={row.graduationYear}
+          onChange={(e) => onUpdate(level, { graduationYear: e.target.value })}
+          size="small"
+        />
+        {level !== "high_school" && (
+          <>
+            <TextField
+              label="Majors"
+              value={row.majors}
+              onChange={(e) => onUpdate(level, { majors: e.target.value })}
+              size="small"
+              placeholder="Comma-separated"
+            />
+            <TextField
+              label="Minors"
+              value={row.minors}
+              onChange={(e) => onUpdate(level, { minors: e.target.value })}
+              size="small"
+              placeholder="Comma-separated"
+            />
+          </>
+        )}
+      </RowGrid>
+    </Box>
+  );
+});
 
 interface ContactFormProps {
   contact: Contact | null;
@@ -235,9 +418,9 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
   const favorites = useRowList<FavoriteRow>(favoritesToRows(source?.favorite), () => ({ key: "", value: "" }));
 
   const [education, setEducation] = useState(() => educationToForm(source?.education));
-  function updateEducation(level: EducationLevel, patch: Partial<EducationRowState>) {
+  const updateEducation = useCallback((level: EducationLevel, patch: Partial<EducationRowState>) => {
     setEducation((prev) => ({ ...prev, [level]: { ...prev[level], ...patch } }));
-  }
+  }, []);
 
   const [facebookUsername, setFacebookUsername] = useState(source?.social_profiles?.facebook?.username ?? "");
   const [facebookUserId, setFacebookUserId] = useState(source?.social_profiles?.facebook?.user_id ?? "");
@@ -396,6 +579,8 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
   }
 
   const countryCodeOptions = options?.country_codes ?? [{ code: 1, label: "United States/Canada" }];
+  const countryOptions = options?.countries ?? [];
+  const tagOptions = useMemo(() => allTags.map(({ tag }) => tag), [allTags]);
 
   return (
     <Box id="contact-form">
@@ -435,7 +620,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
         <Autocomplete
           multiple
           freeSolo
-          options={allTags.map(({ tag }) => tag)}
+          options={tagOptions}
           value={tags}
           onChange={(_event, newValue) => setTags(Array.from(new Set(newValue.map((v) => v.trim()).filter(Boolean))))}
           renderInput={(params) => <TextField {...params} size="small" placeholder="Type a tag and press Enter…" />}
@@ -459,23 +644,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
 
       <Section title="Phone Numbers">
         {phones.rows.map((row) => (
-          <RemovableRow key={row.id} onRemove={() => phones.remove(row.id)}>
-            <TextField label="Label" value={row.label} onChange={(e) => phones.update(row.id, { label: e.target.value })} size="small" />
-            <TextField
-              label="Country"
-              select
-              value={row.countryCode}
-              onChange={(e) => phones.update(row.id, { countryCode: Number(e.target.value) })}
-              size="small"
-            >
-              {countryCodeOptions.map((option) => (
-                <MenuItem key={option.code} value={option.code}>
-                  {option.label} (+{option.code})
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField label="Number" value={row.number} onChange={(e) => phones.update(row.id, { number: e.target.value })} size="small" />
-          </RemovableRow>
+          <PhoneRowFields key={row.id} row={row} countryCodeOptions={countryCodeOptions} onUpdate={phones.update} onRemove={phones.remove} />
         ))}
         <Button size="small" startIcon={<AddIcon />} onClick={phones.add}>
           Add phone number
@@ -486,17 +655,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
 
       <Section title="Email Addresses">
         {emails.rows.map((row) => (
-          <RemovableRow key={row.id} onRemove={() => emails.remove(row.id)}>
-            <TextField label="Label" value={row.label} onChange={(e) => emails.update(row.id, { label: e.target.value })} size="small" />
-            <TextField
-              label="Address"
-              type="email"
-              value={row.address}
-              onChange={(e) => emails.update(row.id, { address: e.target.value })}
-              size="small"
-              sx={{ gridColumn: "span 2" }}
-            />
-          </RemovableRow>
+          <EmailRowFields key={row.id} row={row} onUpdate={emails.update} onRemove={emails.remove} />
         ))}
         <Button size="small" startIcon={<AddIcon />} onClick={emails.add}>
           Add email address
@@ -507,35 +666,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
 
       <Section title="Addresses">
         {addresses.rows.map((row) => (
-          <RemovableRow key={row.id} onRemove={() => addresses.remove(row.id)}>
-            <TextField label="Label" value={row.label} onChange={(e) => addresses.update(row.id, { label: e.target.value })} size="small" />
-            <TextField
-              label="Street"
-              value={row.street}
-              onChange={(e) => addresses.update(row.id, { street: e.target.value })}
-              size="small"
-              multiline
-              placeholder="One line per address line"
-              sx={{ gridColumn: "span 2" }}
-            />
-            <TextField label="City" value={row.city} onChange={(e) => addresses.update(row.id, { city: e.target.value })} size="small" />
-            <TextField label="State" value={row.state} onChange={(e) => addresses.update(row.id, { state: e.target.value })} size="small" />
-            <TextField label="Postal Code" value={row.postalCode} onChange={(e) => addresses.update(row.id, { postalCode: e.target.value })} size="small" />
-            <TextField
-              label="Country"
-              select
-              value={row.country}
-              onChange={(e) => addresses.update(row.id, { country: e.target.value })}
-              size="small"
-            >
-              <MenuItem value="">—</MenuItem>
-              {(options?.countries ?? []).map((country) => (
-                <MenuItem key={country} value={country}>
-                  {country}
-                </MenuItem>
-              ))}
-            </TextField>
-          </RemovableRow>
+          <AddressRowFields key={row.id} row={row} countryOptions={countryOptions} onUpdate={addresses.update} onRemove={addresses.remove} />
         ))}
         <Button size="small" startIcon={<AddIcon />} onClick={addresses.add}>
           Add address
@@ -546,56 +677,15 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
 
       <Section title="Education">
         {(Object.keys(EDUCATION_LABELS) as EducationLevel[]).map((level) => {
-          const row = education[level];
           const schoolOptions = level === "high_school" ? options?.high_schools ?? [] : options?.universities ?? [];
           return (
-            <Box key={level} sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                {EDUCATION_LABELS[level]}
-              </Typography>
-              <RowGrid>
-                <TextField
-                  label="School"
-                  select
-                  value={row.name}
-                  onChange={(e) => updateEducation(level, { name: e.target.value })}
-                  size="small"
-                  sx={{ gridColumn: "span 2" }}
-                >
-                  <MenuItem value="">—</MenuItem>
-                  {schoolOptions.map((school) => (
-                    <MenuItem key={school} value={school}>
-                      {school}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  label="Graduation Year"
-                  type="number"
-                  value={row.graduationYear}
-                  onChange={(e) => updateEducation(level, { graduationYear: e.target.value })}
-                  size="small"
-                />
-                {level !== "high_school" && (
-                  <>
-                    <TextField
-                      label="Majors"
-                      value={row.majors}
-                      onChange={(e) => updateEducation(level, { majors: e.target.value })}
-                      size="small"
-                      placeholder="Comma-separated"
-                    />
-                    <TextField
-                      label="Minors"
-                      value={row.minors}
-                      onChange={(e) => updateEducation(level, { minors: e.target.value })}
-                      size="small"
-                      placeholder="Comma-separated"
-                    />
-                  </>
-                )}
-              </RowGrid>
-            </Box>
+            <EducationLevelFields
+              key={level}
+              level={level}
+              row={education[level]}
+              schoolOptions={schoolOptions}
+              onUpdate={updateEducation}
+            />
           );
         })}
       </Section>
@@ -676,10 +766,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
           Favorites
         </Typography>
         {favorites.rows.map((row) => (
-          <RemovableRow key={row.id} onRemove={() => favorites.remove(row.id)}>
-            <TextField label="Key" value={row.key} onChange={(e) => favorites.update(row.id, { key: e.target.value })} size="small" placeholder="e.g. color" />
-            <TextField label="Value" value={row.value} onChange={(e) => favorites.update(row.id, { value: e.target.value })} size="small" />
-          </RemovableRow>
+          <FavoriteRowFields key={row.id} row={row} onUpdate={favorites.update} onRemove={favorites.remove} />
         ))}
         <Button size="small" startIcon={<AddIcon />} onClick={favorites.add}>
           Add favorite
