@@ -17,6 +17,23 @@ const EDUCATION_FIELDS: FilterField[] = (Object.keys(EDUCATION_LABELS) as Educat
   values: (contact) => nonEmpty([contact.education?.[level]?.name]),
 }));
 
+// One existence filter per platform: "Yes" if the contact has that profile,
+// otherwise no value (so the NONE sentinel reads as "doesn't exist") — not
+// the usernames themselves, since those are mostly unique and not a useful
+// grouping.
+const SOCIAL_PROFILE_FIELDS: { id: string; label: string; has: (contact: Contact) => boolean }[] = [
+  { id: "social:facebook", label: "Facebook", has: (contact) => Boolean(contact.social_profiles?.facebook) },
+  { id: "social:game_center", label: "Game Center", has: (contact) => Boolean(contact.social_profiles?.game_center) },
+  { id: "social:instagram", label: "Instagram", has: (contact) => Boolean(contact.social_profiles?.instagram) },
+  { id: "social:linkedin", label: "LinkedIn", has: (contact) => Boolean(contact.social_profiles?.linkedin) },
+];
+
+const SOCIAL_FIELDS: FilterField[] = SOCIAL_PROFILE_FIELDS.map(({ id, label, has }) => ({
+  id,
+  label,
+  values: (contact) => (has(contact) ? ["Yes"] : []),
+}));
+
 // The field catalogue for the filter dropdown: a top-level list of fields,
 // each with its own way of pulling matchable values out of a contact.
 export const FILTER_FIELDS: FilterField[] = [
@@ -26,6 +43,7 @@ export const FILTER_FIELDS: FilterField[] = [
     values: (contact) => contact.tags ?? [],
   },
   ...EDUCATION_FIELDS,
+  ...SOCIAL_FIELDS,
   {
     id: "city",
     label: "City",
