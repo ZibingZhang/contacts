@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ContactFieldOptions, Contact, Education, EducationLevel, TagCount } from "../types";
 import { createContact, updateContact, fetchContactFieldOptions, ApiError } from "../api";
-import { EDUCATION_LABELS } from "../format";
+import { EDUCATION_LABELS, formatDate } from "../format";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import TextField from "@mui/material/TextField";
@@ -79,11 +79,64 @@ function educationToForm(education: Education | undefined): Record<EducationLeve
   return form;
 }
 
-// A plain "YYYY-MM-DD" is all a native date input can render -- birthdays and
-// dated-range endpoints with "XXXX"/"XX" unknown-part placeholders fall back
-// to blank rather than showing something the input would reject.
-function toDateInputValue(dateStr: string | undefined): string {
-  return dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr : "";
+// Birthdays and dated-range endpoints allow "XXXX"/"XX" in place of a
+// year/month/day that isn't known, so they're plain text fields rather than
+// native date inputs (which can't represent that ambiguity).
+const PARTIAL_DATE_RE = /^(\d{4}|XXXX)-(\d{2}|XX)-(\d{2}|XX)$/;
+
+function isValidDateInput(value: string): boolean {
+  return value.trim() === "" || PARTIAL_DATE_RE.test(value.trim());
+}
+
+// Strips everything but digits/X, uppercases, caps at 8 meaningful chars
+// (YYYYMMDD), and re-inserts the dashes -- so typing "19900305" becomes
+// "1990-03-05" as you go, the same way a phone number field auto-formats.
+function autoDashDate(raw: string): string {
+  const chars = raw.toUpperCase().replace(/[^0-9X]/g, "").slice(0, 8);
+  const parts = [chars.slice(0, 4)];
+  if (chars.length > 4) parts.push(chars.slice(4, 6));
+  if (chars.length > 6) parts.push(chars.slice(6, 8));
+  return parts.join("-");
+}
+
+interface DateTextFieldProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  hint: string;
+}
+
+// Shows a friendly, read-only-looking formatted date (e.g. "March 1990")
+// until clicked, then swaps to the raw "YYYY-MM-DD" (XX/XXXX for unknown
+// parts) for editing, reverting back to the friendly format on blur.
+// Doesn't flag red while a date is still mid-typing -- only once all 8
+// digits/X's are in and they don't form a valid date, or after blur.
+function DateTextField({ label, value, onChange, hint }: DateTextFieldProps) {
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const complete = draft.replace(/-/g, "").length === 8;
+  const showError = focused ? complete && !isValidDateInput(draft) : value !== "" && !isValidDateInput(value);
+
+  return (
+    <TextField
+      label={label}
+      size="small"
+      value={focused ? draft : formatDate(value) ?? ""}
+      placeholder={focused ? "YYYY-MM-DD" : undefined}
+      error={showError}
+      helperText={showError ? "Expected YYYY-MM-DD, with XX/XXXX for unknown parts" : focused ? hint : undefined}
+      onFocus={() => {
+        setDraft(value);
+        setFocused(true);
+      }}
+      onBlur={() => {
+        setFocused(false);
+        onChange(draft.trim());
+      }}
+      onChange={(e) => setDraft(autoDashDate(e.target.value))}
+    />
+  );
 }
 
 function phonesToRows(phones: Contact["phone_numbers"]): PhoneRow[] {
@@ -404,7 +457,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
     suffix: source?.name?.suffix ?? "",
     chinese_name: source?.name?.chinese_name ?? "",
   });
-  const [birthday, setBirthday] = useState(() => toDateInputValue(source?.birthday));
+  const [birthday, setBirthday] = useState(source?.birthday ?? "");
 
   const phones = useRowList<PhoneRow>(phonesToRows(source?.phone_numbers), () => ({ label: "", countryCode: 1, number: "" }));
   const emails = useRowList<EmailRow>(emailsToRows(source?.email_addresses), () => ({ label: "", address: "" }));
@@ -435,8 +488,8 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
 
   const [notes, setNotes] = useState(source?.notes ?? "");
   const [friendsFriend, setFriendsFriend] = useState(source?.friends_friend ?? "");
-  const [datedStart, setDatedStart] = useState(() => toDateInputValue(source?.dated?.start));
-  const [datedEnd, setDatedEnd] = useState(() => toDateInputValue(source?.dated?.end));
+  const [datedStart, setDatedStart] = useState(source?.dated?.start ?? "");
+  const [datedEnd, setDatedEnd] = useState(source?.dated?.end ?? "");
   const [tags, setTags] = useState<string[]>(source?.tags ?? []);
 
   function buildSnapshot() {
@@ -468,6 +521,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
     initialSnapshotRef.current = buildSnapshot();
   }
   const isDirty = buildSnapshot() !== initialSnapshotRef.current;
+  const hasInvalidDates = !isValidDateInput(birthday) || !isValidDateInput(datedStart) || !isValidDateInput(datedEnd);
 
   function buildPayload(): Record<string, unknown> {
     const payload: Record<string, unknown> = {};
@@ -477,7 +531,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
     );
     payload.name = nameFields;
 
-    if (birthday) payload.birthday = birthday;
+    if (birthday.trim()) payload.birthday = birthday.trim();
 
     const phoneNumbers = phones.rows
       .filter((row) => row.number.trim() !== "")
@@ -549,8 +603,8 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
 
     if (notes.trim()) payload.notes = notes.trim();
     if (friendsFriend.trim()) payload.friends_friend = friendsFriend.trim();
-    if (datedStart || datedEnd) {
-      payload.dated = { start: datedStart || null, end: datedEnd || null };
+    if (datedStart.trim() || datedEnd.trim()) {
+      payload.dated = { start: datedStart.trim() || null, end: datedEnd.trim() || null };
     }
 
     const favorite = Object.fromEntries(
@@ -569,7 +623,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        if (isDirty && !isSubmitting) handleSubmit();
+        if (isDirty && !isSubmitting && !hasInvalidDates) handleSubmit();
       } else if (event.key === "Escape") {
         event.preventDefault();
         if (!isSubmitting) onCancel();
@@ -617,7 +671,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
           <Button onClick={onCancel} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button variant="contained" onClick={handleSubmit} disabled={isSubmitting || !isDirty}>
+          <Button variant="contained" onClick={handleSubmit} disabled={isSubmitting || !isDirty || hasInvalidDates}>
             {isSubmitting ? "Saving…" : "Save"}
           </Button>
         </Box>
@@ -658,13 +712,11 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
       <Divider sx={{ my: 2 }} />
 
       <Section title="Birthday">
-        <TextField
+        <DateTextField
           label="Birthday"
-          type="date"
           value={birthday}
-          onChange={(e) => setBirthday(e.target.value)}
-          size="small"
-          slotProps={{ inputLabel: { shrink: true } }}
+          onChange={setBirthday}
+          hint="Use XX for an unknown month/day, or XXXX for an unknown year"
         />
       </Section>
 
@@ -772,22 +824,8 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
             sx={{ gridColumn: "span 2" }}
           />
           <TextField label="Friend's Friend" value={friendsFriend} onChange={(e) => setFriendsFriend(e.target.value)} size="small" />
-          <TextField
-            label="Dated From"
-            type="date"
-            value={datedStart}
-            onChange={(e) => setDatedStart(e.target.value)}
-            size="small"
-            slotProps={{ inputLabel: { shrink: true } }}
-          />
-          <TextField
-            label="Dated To"
-            type="date"
-            value={datedEnd}
-            onChange={(e) => setDatedEnd(e.target.value)}
-            size="small"
-            slotProps={{ inputLabel: { shrink: true } }}
-          />
+          <DateTextField label="Dated From" value={datedStart} onChange={setDatedStart} hint="XX/XXXX for unknown parts" />
+          <DateTextField label="Dated To" value={datedEnd} onChange={setDatedEnd} hint="XX/XXXX for unknown parts" />
         </RowGrid>
 
         <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5, mt: 2 }}>
