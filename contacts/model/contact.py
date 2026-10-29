@@ -33,10 +33,10 @@ class University(dataclasses_utils.DataClassJsonMixin):
 
 @dataclasses.dataclass(repr=False)
 class Education(dataclasses_utils.DataClassJsonMixin):
-    bachelor: University | None = None
     high_school: HighSchool | None = None
-    law: University | None = None
+    bachelor: University | None = None
     master: University | None = None
+    law: University | None = None
     medical: University | None = None
     phd: University | None = None
 

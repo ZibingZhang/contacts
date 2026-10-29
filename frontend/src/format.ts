@@ -6,8 +6,8 @@ const MONTH_NAMES = [
 ];
 
 export const EDUCATION_LABELS: Record<EducationLevel, string> = {
-  bachelor: "Bachelor's",
   high_school: "High School",
+  bachelor: "Bachelor's",
   master: "Master's",
   law: "Law",
   medical: "Medical",

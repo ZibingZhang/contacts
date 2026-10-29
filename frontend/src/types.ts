@@ -36,7 +36,7 @@ export interface EducationEntry {
   minors?: string[];
 }
 
-export type EducationLevel = "bachelor" | "high_school" | "master" | "law" | "medical" | "phd";
+export type EducationLevel = "high_school" | "bachelor" | "master" | "law" | "medical" | "phd";
 
 export type Education = Partial<Record<EducationLevel, EducationEntry>>;
 

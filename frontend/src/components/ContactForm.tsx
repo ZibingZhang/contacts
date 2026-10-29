@@ -55,8 +55,8 @@ const EMPTY_EDUCATION_ROW: EducationRowState = { name: "", graduationYear: "", m
 
 function emptyEducation(): Record<EducationLevel, EducationRowState> {
   return {
-    bachelor: { ...EMPTY_EDUCATION_ROW },
     high_school: { ...EMPTY_EDUCATION_ROW },
+    bachelor: { ...EMPTY_EDUCATION_ROW },
     master: { ...EMPTY_EDUCATION_ROW },
     law: { ...EMPTY_EDUCATION_ROW },
     medical: { ...EMPTY_EDUCATION_ROW },
