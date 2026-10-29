@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { Contact } from "../types";
+import { isTypingTarget } from "../hooks";
 import {
   buildDisplayName,
   initials,
@@ -16,11 +17,6 @@ import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-}
 
 function NameHeader({
   contact,

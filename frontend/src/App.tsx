@@ -17,7 +17,7 @@ import {
 import type { Contact, TagCount, SyncRequiresVerification, SyncReview, SyncResult } from "./types";
 import { contactLetter } from "./search";
 import { sameFilter, type SelectedFilter } from "./filters";
-import { useDebouncedValue, useFilteredContactIds } from "./hooks";
+import { useDebouncedValue, useFilteredContactIds, isTypingTarget } from "./hooks";
 import { Sidebar, type ListStatus } from "./components/Sidebar";
 import { ContactDetail } from "./components/ContactDetail";
 import { BatchTagModal } from "./components/BatchTagModal";
@@ -239,20 +239,42 @@ export function App() {
     }
   }
 
+  // Scrolls the edit form's container all the way to its top or bottom.
+  function scrollEditFormToBoundary(position: "top" | "bottom") {
+    const container = document.getElementById("contact-detail");
+    if (!container) {
+      return;
+    }
+    container.scrollTo({ top: position === "top" ? 0 : container.scrollHeight });
+  }
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       const jumpToBoundary = event.metaKey || event.ctrlKey;
+      // While editing, Cmd/Ctrl+Up/Down scrolls the form instead of jumping
+      // the (hidden) list selection out from under the contact being edited.
+      if (editingContactId !== null && jumpToBoundary && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+        event.preventDefault();
+        scrollEditFormToBoundary(event.key === "ArrowDown" ? "bottom" : "top");
+        return;
+      }
+      if (editingContactId !== null) {
+        return;
+      }
       if (event.key === "ArrowDown") {
         event.preventDefault();
         jumpToBoundary ? selectBoundaryContact("last") : moveSelection(1);
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
         jumpToBoundary ? selectBoundaryContact("first") : moveSelection(-1);
+      } else if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey && !isTypingTarget(event.target)) {
+        event.preventDefault();
+        document.getElementById("search-input")?.focus();
       }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [visibleContacts, selectedContactId]);
+  }, [visibleContacts, selectedContactId, editingContactId]);
 
   function toggleFilter(filter: SelectedFilter) {
     setSelectedFilters((prev) =>

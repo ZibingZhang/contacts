@@ -3,6 +3,13 @@ import type { Contact } from "./types";
 import type { SelectedFilter } from "./filters";
 import type { FilterWorkerRequest, FilterWorkerResponse } from "./filterWorker";
 
+// True when a keyboard event's target is already a place the user types
+// into, so single-key shortcuts know to stay out of its way.
+export function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+}
+
 // Mirrors `value`, but only after it's gone `delayMs` without changing again —
 // lets a fast typist's keystrokes land without each one kicking off a filter
 // pass immediately.
