@@ -17,6 +17,9 @@ function contactSearchText(contact: Contact): string {
   if (contact.name?.chinese_name) {
     parts.push(contact.name.chinese_name);
   }
+  if (contact.name?.maiden_name) {
+    parts.push(contact.name.maiden_name);
+  }
   return normalizeForSearch(parts.join(" "));
 }
 

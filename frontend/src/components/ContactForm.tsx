@@ -400,6 +400,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
     middle_name: source?.name?.middle_name ?? "",
     last_name: source?.name?.last_name ?? "",
     nickname: source?.name?.nickname ?? "",
+    maiden_name: source?.name?.maiden_name ?? "",
     suffix: source?.name?.suffix ?? "",
     chinese_name: source?.name?.chinese_name ?? "",
   });
@@ -635,6 +636,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
           <TextField label="Middle Name" value={name.middle_name} onChange={(e) => setName({ ...name, middle_name: e.target.value })} size="small" />
           <TextField label="Last Name" value={name.last_name} onChange={(e) => setName({ ...name, last_name: e.target.value })} size="small" />
           <TextField label="Nickname" value={name.nickname} onChange={(e) => setName({ ...name, nickname: e.target.value })} size="small" />
+          <TextField label="Maiden Name" value={name.maiden_name} onChange={(e) => setName({ ...name, maiden_name: e.target.value })} size="small" />
           <TextField label="Suffix" value={name.suffix} onChange={(e) => setName({ ...name, suffix: e.target.value })} size="small" />
           <TextField label="Chinese Name" value={name.chinese_name} onChange={(e) => setName({ ...name, chinese_name: e.target.value })} size="small" />
         </RowGrid>

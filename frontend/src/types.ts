@@ -4,6 +4,7 @@ export interface Name {
   middle_name?: string;
   last_name?: string;
   nickname?: string;
+  maiden_name?: string;
   suffix?: string;
   chinese_name?: string;
 }

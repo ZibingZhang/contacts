@@ -76,6 +76,7 @@ class Name(dataclasses_utils.DataClassJsonMixin):
     first_name: str | None = None
     nickname: str | None = None
     deadname: str | None = None
+    maiden_name: str | None = None
     middle_name: str | None = None
     last_name: str | None = None
     suffix: str | None = None

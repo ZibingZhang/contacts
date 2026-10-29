@@ -147,6 +147,10 @@ def remove_unsynced_fields(contact: model.DiskContact) -> None:
     except AttributeError:
         pass
     try:
+        del contact.name.maiden_name  # type: ignore
+    except AttributeError:
+        pass
+    try:
         del contact.social_profiles.instagram.finsta_usernames  # type: ignore
     except AttributeError:
         pass
