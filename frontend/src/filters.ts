@@ -34,34 +34,64 @@ const SOCIAL_FIELDS: FilterField[] = SOCIAL_PROFILE_FIELDS.map(({ id, label, has
   values: (contact) => (has(contact) ? ["Yes"] : []),
 }));
 
-// The field catalogue for the filter dropdown: a top-level list of fields,
-// each with its own way of pulling matchable values out of a contact.
+const TAG_FIELD: FilterField = {
+  id: "tag",
+  label: "Tag",
+  values: (contact) => contact.tags ?? [],
+};
+
+const CITY_FIELD: FilterField = {
+  id: "city",
+  label: "City",
+  values: (contact) => nonEmpty((contact.street_addresses ?? []).map((address) => address.city)),
+};
+
+const STATE_FIELD: FilterField = {
+  id: "state",
+  label: "State",
+  values: (contact) => nonEmpty((contact.street_addresses ?? []).map((address) => address.state)),
+};
+
+const COUNTRY_FIELD: FilterField = {
+  id: "country",
+  label: "Country",
+  values: (contact) => nonEmpty((contact.street_addresses ?? []).map((address) => address.country)),
+};
+
+// The flat field catalogue backing filter matching and value counting — every
+// leaf field, regardless of how the dropdown groups it for display.
 export const FILTER_FIELDS: FilterField[] = [
-  {
-    id: "tag",
-    label: "Tag",
-    values: (contact) => contact.tags ?? [],
-  },
+  TAG_FIELD,
   ...EDUCATION_FIELDS,
   ...SOCIAL_FIELDS,
-  {
-    id: "city",
-    label: "City",
-    values: (contact) => nonEmpty((contact.street_addresses ?? []).map((address) => address.city)),
-  },
-  {
-    id: "state",
-    label: "State",
-    values: (contact) => nonEmpty((contact.street_addresses ?? []).map((address) => address.state)),
-  },
-  {
-    id: "country",
-    label: "Country",
-    values: (contact) => nonEmpty((contact.street_addresses ?? []).map((address) => address.country)),
-  },
+  CITY_FIELD,
+  STATE_FIELD,
+  COUNTRY_FIELD,
 ];
 
 export const FILTER_FIELDS_BY_ID = new Map(FILTER_FIELDS.map((field) => [field.id, field]));
+
+export interface FilterFieldGroup {
+  id: string;
+  label: string;
+  fields: FilterField[];
+}
+
+export type FilterMenuEntry = FilterField | FilterFieldGroup;
+
+export function isFilterFieldGroup(entry: FilterMenuEntry): entry is FilterFieldGroup {
+  return "fields" in entry;
+}
+
+// The dropdown's top-level menu: standalone fields alongside groups (e.g.
+// Education, Social Profile) that nest their fields one level deeper, so
+// related fields don't clutter the top-level list.
+export const FILTER_MENU: FilterMenuEntry[] = [
+  TAG_FIELD,
+  { id: "group:education", label: "Education", fields: EDUCATION_FIELDS },
+  { id: "group:social", label: "Social Profile", fields: SOCIAL_FIELDS },
+  { id: "group:address", label: "Address", fields: [CITY_FIELD, STATE_FIELD, COUNTRY_FIELD] },
+];
 
 export interface SelectedFilter {
   field: string;

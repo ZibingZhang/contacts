@@ -3,9 +3,12 @@ import type { Contact } from "../types";
 import {
   FILTER_FIELDS,
   FILTER_FIELDS_BY_ID,
+  FILTER_MENU,
   countAllFilterValues,
+  isFilterFieldGroup,
   isNoneFilterValue,
   sameFilter,
+  type FilterFieldGroup,
   type FilterValueCount,
   type SelectedFilter,
 } from "../filters";
@@ -102,23 +105,35 @@ function VirtualValueList({ values, selectedFilters, fieldId, onToggleFilter, em
   );
 }
 
-// A two-level filter menu: pick a field (Tag, High School, City, …) then
-// pick one of its values. Selections across any combination of fields
-// narrow the contact list together (AND), mirroring the old tag-only facet.
+// A three-level filter menu: pick a group (Education, Social Profile, …) or
+// standalone field (Tag, City, …), then — for a group — pick one of its
+// fields, then pick one of that field's values. Selections across any
+// combination of fields narrow the contact list together (AND), mirroring
+// the old tag-only facet.
 export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onClear }: FilterDropdownProps) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [openFieldId, setOpenFieldId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [sortAlpha, setSortAlpha] = useState(false);
 
   const isOpen = Boolean(anchorEl);
+  const activeGroup: FilterFieldGroup | null = openGroupId
+    ? (FILTER_MENU.find((entry) => entry.id === openGroupId) as FilterFieldGroup | undefined) ?? null
+    : null;
   const activeField = openFieldId ? FILTER_FIELDS_BY_ID.get(openFieldId) ?? null : null;
 
   function handleClose() {
     setAnchorEl(null);
+    setOpenGroupId(null);
     setOpenFieldId(null);
     setSearchText("");
     setSortAlpha(false);
+  }
+
+  function openGroup(groupId: string) {
+    setOpenGroupId(groupId);
+    setSearchText("");
   }
 
   function openField(fieldId: string) {
@@ -126,16 +141,33 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
     setSearchText("");
   }
 
+  // Steps back one level: value picker -> field list (group's, if any, else
+  // top-level) -> top-level.
   function goBack() {
-    setOpenFieldId(null);
+    if (openFieldId !== null) {
+      setOpenFieldId(null);
+    } else {
+      setOpenGroupId(null);
+    }
     setSearchText("");
   }
 
   const query = searchText.trim().toLowerCase();
 
-  const visibleFields = query
-    ? FILTER_FIELDS.filter((field) => field.label.toLowerCase().includes(query))
-    : FILTER_FIELDS;
+  // At the top level, a search also reaches into group fields (e.g. typing
+  // "facebook" finds it without first opening Social Profile) and jumps
+  // straight to the field entry; otherwise show the top-level menu as-is.
+  const visibleMenuEntries =
+    query && !activeGroup
+      ? FILTER_FIELDS.filter((field) => field.label.toLowerCase().includes(query))
+      : !activeGroup
+        ? FILTER_MENU
+        : [];
+
+  const visibleGroupFields =
+    activeGroup && query
+      ? activeGroup.fields.filter((field) => field.label.toLowerCase().includes(query))
+      : activeGroup?.fields ?? [];
 
   // Computed once per `contacts` change for every field at once, so opening
   // a field's value picker is a plain map lookup — no scan over `contacts`
@@ -178,8 +210,8 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
       >
         <Box sx={{ width: 300 }}>
           <Box sx={{ p: 1, borderBottom: 1, borderColor: "divider", display: "flex", alignItems: "center", gap: 0.5 }}>
-            {activeField && (
-              <IconButton id="filter-back" size="small" aria-label="Back to fields" onClick={goBack}>
+            {(activeField || activeGroup) && (
+              <IconButton id="filter-back" size="small" aria-label="Back" onClick={goBack}>
                 <ArrowBackIcon fontSize="small" />
               </IconButton>
             )}
@@ -187,8 +219,14 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
               id="filter-search"
               size="small"
               fullWidth
-              placeholder={activeField ? `Search ${activeField.label.toLowerCase()}…` : "Search fields…"}
-              aria-label={activeField ? `Search ${activeField.label}` : "Search fields"}
+              placeholder={
+                activeField
+                  ? `Search ${activeField.label.toLowerCase()}…`
+                  : activeGroup
+                    ? `Search ${activeGroup.label.toLowerCase()} fields…`
+                    : "Search fields…"
+              }
+              aria-label={activeField ? `Search ${activeField.label}` : activeGroup ? `Search ${activeGroup.label}` : "Search fields"}
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
             />
@@ -206,7 +244,7 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
             )}
           </Box>
 
-          {!activeField && selectedFilters.length > 0 && (
+          {!activeField && !activeGroup && selectedFilters.length > 0 && (
             <>
               <List id="filter-selected" dense disablePadding>
                 {selectedFilters.map((filter) => (
@@ -234,16 +272,35 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
               onToggleFilter={onToggleFilter}
               emptyMessage={query ? "No matching values" : "No values"}
             />
-          ) : (
-            <List id="filter-fields" dense disablePadding sx={{ maxHeight: 280, overflowY: "auto" }}>
-              {visibleFields.length === 0 ? (
+          ) : activeGroup ? (
+            <List id="filter-group-fields" dense disablePadding sx={{ maxHeight: 280, overflowY: "auto" }}>
+              {visibleGroupFields.length === 0 ? (
                 <Typography color="text.secondary" variant="body2" sx={{ px: 2, py: 1 }}>
                   No matching fields
                 </Typography>
               ) : (
-                visibleFields.map((field) => (
+                visibleGroupFields.map((field) => (
                   <ListItemButton key={field.id} onClick={() => openField(field.id)} dense>
                     <ListItemText primary={field.label} />
+                    <ChevronRightIcon fontSize="small" color="action" />
+                  </ListItemButton>
+                ))
+              )}
+            </List>
+          ) : (
+            <List id="filter-fields" dense disablePadding sx={{ maxHeight: 280, overflowY: "auto" }}>
+              {visibleMenuEntries.length === 0 ? (
+                <Typography color="text.secondary" variant="body2" sx={{ px: 2, py: 1 }}>
+                  No matching fields
+                </Typography>
+              ) : (
+                visibleMenuEntries.map((entry) => (
+                  <ListItemButton
+                    key={entry.id}
+                    onClick={() => (isFilterFieldGroup(entry) ? openGroup(entry.id) : openField(entry.id))}
+                    dense
+                  >
+                    <ListItemText primary={entry.label} />
                     <ChevronRightIcon fontSize="small" color="action" />
                   </ListItemButton>
                 ))
