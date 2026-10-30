@@ -118,7 +118,10 @@ export function ContactDetail({
   const socialRows = [];
   if (contact.social_profiles?.facebook) {
     const { facebook } = contact.social_profiles;
-    socialRows.push(fieldRow("Facebook", facebook.username || facebook.user_id || ""));
+    const facebookId = facebook.username || facebook.user_id || "";
+    socialRows.push(
+      fieldRow("Facebook", <ExternalLink href={`https://www.facebook.com/${facebookId}`}>{facebookId}</ExternalLink>)
+    );
   }
   if (contact.social_profiles?.game_center) {
     socialRows.push(fieldRow("Game Center", contact.social_profiles.game_center.username));
