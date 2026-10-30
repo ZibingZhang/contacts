@@ -86,6 +86,12 @@ export function App() {
 
   const listRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Tracks the contact id the URL was last synced with, so the history
+  // effect can tell "navigated to a different contact" (push, so back/
+  // forward moves through contacts viewed) apart from "search/filter
+  // changed while on the same contact" (replace, so typing doesn't spam
+  // history).
+  const syncedContactIdRef = useRef<number | null>(selectedContactId);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,8 +144,29 @@ export function App() {
     }
     const queryString = params.toString();
     const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ""}${window.location.hash}`;
-    window.history.replaceState(null, "", newUrl);
+    if (selectedContactId !== syncedContactIdRef.current) {
+      window.history.pushState(null, "", newUrl);
+    } else {
+      window.history.replaceState(null, "", newUrl);
+    }
+    syncedContactIdRef.current = selectedContactId;
   }, [searchQuery, selectedFilters, selectedContactId]);
+
+  // Restores search/filter/selection state when the user navigates with the
+  // browser's back/forward buttons.
+  useEffect(() => {
+    function handlePopState() {
+      const { query, filters, contactId } = paramsFromLocation();
+      syncedContactIdRef.current = contactId;
+      setSearchQuery(query);
+      setSelectedFilters(filters);
+      setSelectedContactId(contactId);
+      setEditingContactId(null);
+      setCopySourceContact(null);
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   // Debounced so fast typing doesn't kick off a filter pass per keystroke;
   // the actual filtering then runs in a Web Worker, off the main thread.
