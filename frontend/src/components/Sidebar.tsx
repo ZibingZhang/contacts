@@ -118,6 +118,38 @@ export function Sidebar({
     localStorage.setItem(COLLAPSED_STORAGE_KEY, String(collapsed));
   }, [collapsed]);
 
+  // Latest selectedContactId without being a dependency below, so clicking a
+  // different contact later doesn't retrigger the scroll-into-view (that's
+  // already visible from the click itself).
+  const selectedContactIdRef = useRef(selectedContactId);
+  useEffect(() => {
+    selectedContactIdRef.current = selectedContactId;
+  }, [selectedContactId]);
+
+  // Scrolls the selected contact into view on page load, and again each
+  // time the sidebar expands from collapsed (its contents fully unmount
+  // while collapsed, so the scroll position is lost). Depends on `contacts`
+  // rather than firing once, since filtering runs debounced through a Web
+  // Worker — the selected item may not exist in the DOM yet on the first
+  // pass after the initial fetch resolves.
+  const didScrollToSelectionRef = useRef(false);
+  useEffect(() => {
+    if (collapsed) {
+      didScrollToSelectionRef.current = false;
+      return;
+    }
+    if (didScrollToSelectionRef.current || selectedContactIdRef.current === null) {
+      return;
+    }
+    const item = listRef.current?.querySelector<HTMLElement>(
+      `[data-contact-id="${selectedContactIdRef.current}"]`
+    );
+    if (item) {
+      item.scrollIntoView({ block: "center" });
+      didScrollToSelectionRef.current = true;
+    }
+  }, [collapsed, contacts, listRef]);
+
   // Mutates the nav element's width directly, bypassing React state, so a
   // drag doesn't trigger a re-render (and full reconciliation of the
   // thousand-item contact list) on every pointer move. The width is only
