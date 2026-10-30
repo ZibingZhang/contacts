@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { ContactFieldOptions, Contact, Education, EducationLevel, TagCount } from "../types";
 import { createContact, updateContact, fetchContactFieldOptions, ApiError } from "../api";
 import { EDUCATION_LABELS, formatDate } from "../format";
+import { filterBySubsequence } from "../search";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import TextField from "@mui/material/TextField";
@@ -381,6 +382,7 @@ const EducationLevelFields = memo(function EducationLevelFields({
           value={row.name}
           onChange={(_event, newValue) => onUpdate(level, { name: newValue ?? "" })}
           onInputChange={(_event, newValue) => onUpdate(level, { name: newValue })}
+          filterOptions={(options, state) => filterBySubsequence(options, state.inputValue)}
           renderInput={(params) => <TextField {...params} label="School" size="small" />}
           sx={{ gridColumn: "span 2" }}
         />

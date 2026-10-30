@@ -115,10 +115,9 @@ function scoreToken(text: string, words: string[], token: string): number | null
   return SCORE_SUBSEQUENCE + seqScore;
 }
 
-// Scores a contact against a query, or returns null if any query token fails
-// to match at all (including as a subsequence).
-function scoreContact(contact: Contact, query: string, tokens: string[]): number | null {
-  const text = contactSearchText(contact);
+// Scores arbitrary text against a query, or returns null if any query token
+// fails to match at all (including as a subsequence).
+function scoreText(text: string, query: string, tokens: string[]): number | null {
   if (text === query) {
     return SCORE_FULL_EXACT;
   }
@@ -133,6 +132,12 @@ function scoreContact(contact: Contact, query: string, tokens: string[]): number
     total += tokenScore;
   }
   return total;
+}
+
+// Scores a contact against a query, or returns null if any query token fails
+// to match at all (including as a subsequence).
+function scoreContact(contact: Contact, query: string, tokens: string[]): number | null {
+  return scoreText(contactSearchText(contact), query, tokens);
 }
 
 // Alphabetical fallback ordering: first name, then last name, case-insensitive.
@@ -171,6 +176,27 @@ export function filterContacts(contacts: Contact[], query: string): Contact[] {
   }
   scored.sort((a, b) => b.score - a.score || compareByName(a.contact, b.contact));
   return scored.map((entry) => entry.contact);
+}
+
+// Filters and ranks a plain list of strings (e.g. autocomplete options) by
+// the same tiered subsequence matching as `filterContacts`, so a query's
+// letters just need to appear in order somewhere in the option.
+export function filterBySubsequence(options: string[], query: string): string[] {
+  const normalizedQuery = normalizeForSearch(query.trim());
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  if (!tokens.length) {
+    return options;
+  }
+
+  const scored: { option: string; score: number }[] = [];
+  for (const option of options) {
+    const score = scoreText(normalizeForSearch(option), normalizedQuery, tokens);
+    if (score !== null) {
+      scored.push({ option, score });
+    }
+  }
+  scored.sort((a, b) => b.score - a.score || a.option.localeCompare(b.option));
+  return scored.map((entry) => entry.option);
 }
 
 // The letter a contact is grouped/indexed under, matching the field
