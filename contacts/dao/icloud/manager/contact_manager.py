@@ -77,13 +77,12 @@ class ICloudContactManager:
                 "syncToken": self.sync_token,
             }
         )
-        # resp =
-        self._session.post(
+        resp = self._session.post(
             self._contacts_update_url,
             params=params,
             data=json.dumps(body),
         ).json()
-        # self._update_sync_token(resp["syncToken"])
+        self._update_sync_token(resp["syncToken"])
 
     def create_group(self, group: icloud.model.ICloudGroup) -> None:
         """Create a contact group.
