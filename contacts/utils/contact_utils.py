@@ -210,3 +210,51 @@ def extract_tags(contacts: Sequence[model.Contact]) -> list[str]:
     return list(
         sorted(set(tag for contact in contacts for tag in (contact.tags or [])))
     )
+
+
+def extract_high_schools(contacts: Sequence[model.Contact]) -> list[str]:
+    """Extract all high school names from the contacts' education.
+
+    Args:
+        contacts: The contacts.
+
+    Returns:
+        A list of all the distinct high school names the contacts have.
+    """
+    return list(
+        sorted(
+            {
+                contact.education.high_school.name
+                for contact in contacts
+                if contact.education and contact.education.high_school
+            }
+        )
+    )
+
+
+def extract_universities(contacts: Sequence[model.Contact]) -> list[str]:
+    """Extract all university names from the contacts' education.
+
+    Args:
+        contacts: The contacts.
+
+    Returns:
+        A list of all the distinct university names the contacts have.
+    """
+    return list(
+        sorted(
+            {
+                university.name
+                for contact in contacts
+                if contact.education
+                for university in (
+                    contact.education.bachelor,
+                    contact.education.master,
+                    contact.education.law,
+                    contact.education.medical,
+                    contact.education.phd,
+                )
+                if university
+            }
+        )
+    )

@@ -130,6 +130,7 @@ def list_contact_field_options() -> dict:
         {"countries": list[str], "country_codes": [{"code": int, "label":
         str}], "high_schools": list[str], "universities": list[str]}.
     """
+    contacts = list_contacts()
     return {
         "countries": model.Country.values(),
         "country_codes": [
@@ -141,8 +142,8 @@ def list_contact_field_options() -> dict:
             }
             for code in model.CountryCode
         ],
-        "high_schools": model.HighSchoolName.values(),
-        "universities": model.UniversityName.values(),
+        "high_schools": contact_utils.extract_high_schools(contacts),
+        "universities": contact_utils.extract_universities(contacts),
     }
 
 

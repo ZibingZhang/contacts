@@ -13,9 +13,9 @@ from contacts.logger import LOG
 from contacts.utils import contact_utils
 
 _PATTERN_TO_HIGH_SCHOOL_NAME_MAP = {
-    re.compile(r"^ABRSH$"): model.HighSchoolName.ACTON_BOXBOROUGH_REGIONAL_HIGH_SCHOOL,
-    re.compile(r"^LHS$"): model.HighSchoolName.LEXINGTON_HIGH_SCHOOL,
-    re.compile(r"^NHS\d{2}$"): model.HighSchoolName.NEEDHAM_HIGH_SCHOOL,
+    re.compile(r"^ABRSH$"): "Acton-Boxborough Regional High School",
+    re.compile(r"^LHS$"): "Lexington High School",
+    re.compile(r"^NHS\d{2}$"): "Needham High School",
 }
 
 _PATTERN_TO_EXPECTED_TAG_MAP = {
@@ -95,8 +95,7 @@ def _validate_education(contact: model.Contact, should_fix: bool) -> None:
     if (
         contact.education is not None
         and contact.education.high_school is not None
-        and contact.education.high_school.name
-        == model.HighSchoolName.NEEDHAM_HIGH_SCHOOL
+        and contact.education.high_school.name == "Needham High School"
     ):
         _expect_tag(contact, "NHS", should_fix)
         if (year := contact.education.high_school.graduation_year) is not None:

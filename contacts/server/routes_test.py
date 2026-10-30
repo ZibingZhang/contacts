@@ -109,7 +109,7 @@ def test_create_contact_ignores_client_supplied_id_and_icloud(client, monkeypatc
 def test_create_contact_invalid_data(client) -> None:
     response = client.post(
         "/api/contacts",
-        json={"name": {}, "education": {"bachelor": {"name": "Not A School"}}},
+        json={"name": {}, "unexpected_field": "value"},
     )
 
     assert response.status_code == 400
@@ -156,7 +156,7 @@ def test_update_contact_not_found(client) -> None:
 def test_update_contact_invalid_data(client) -> None:
     response = client.put(
         "/api/contacts/1",
-        json={"name": {}, "education": {"bachelor": {"name": "Not A School"}}},
+        json={"name": {}, "unexpected_field": "value"},
     )
 
     assert response.status_code == 400

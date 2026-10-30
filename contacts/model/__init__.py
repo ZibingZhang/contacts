@@ -6,8 +6,6 @@ DateRange = date.DateRange
 
 Country = enumeration.Country
 CountryCode = enumeration.CountryCode
-HighSchoolName = enumeration.HighSchoolName
-UniversityName = enumeration.UniversityName
 
 ICloudPhotoCrop = contact.ICloudPhotoCrop
 

@@ -217,9 +217,7 @@ def _extract_from_notes(contact: model.Contact, notes: nt.Notes) -> None:
         education = model.Education()
 
         if notes.education.bachelor:
-            education.bachelor = model.University(
-                name=model.UniversityName(notes.education.bachelor.name)
-            )
+            education.bachelor = model.University(name=notes.education.bachelor.name)
             if notes.education.bachelor.grad_year:
                 education.bachelor.graduation_year = notes.education.bachelor.grad_year
             if notes.education.bachelor.majors:
@@ -229,7 +227,7 @@ def _extract_from_notes(contact: model.Contact, notes: nt.Notes) -> None:
 
         if notes.education.high_school:
             education.high_school = model.HighSchool(
-                name=model.HighSchoolName(notes.education.high_school.name)
+                name=notes.education.high_school.name
             )
             if notes.education.high_school.grad_year:
                 education.high_school.graduation_year = (
@@ -237,9 +235,7 @@ def _extract_from_notes(contact: model.Contact, notes: nt.Notes) -> None:
                 )
 
         if notes.education.master:
-            education.master = model.University(
-                name=model.UniversityName(notes.education.master.name)
-            )
+            education.master = model.University(name=notes.education.master.name)
             if notes.education.master.grad_year:
                 education.master.graduation_year = notes.education.master.grad_year
             if notes.education.master.majors:

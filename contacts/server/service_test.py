@@ -167,7 +167,7 @@ def test_create_contact_invalidates_cache(monkeypatch, contacts) -> None:
 
 def test_create_contact_invalid_data_raises() -> None:
     with pytest.raises(service.errors.ValidationError):
-        service.create_contact({"name": {}, "education": {"bachelor": {"name": "Not A School"}}})
+        service.create_contact({"name": {}, "unexpected_field": "value"})
 
 
 def test_update_contact_writes_and_returns_updated_contact(monkeypatch, contacts) -> None:
@@ -214,10 +214,25 @@ def test_update_contact_invalid_data_raises(monkeypatch, contacts) -> None:
     monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
 
     with pytest.raises(service.errors.ValidationError):
-        service.update_contact(1, {"name": {}, "education": {"bachelor": {"name": "Not A School"}}})
+        service.update_contact(1, {"name": {}, "unexpected_field": "value"})
 
 
-def test_list_contact_field_options() -> None:
+def test_list_contact_field_options(monkeypatch) -> None:
+    monkeypatch.setattr(
+        service.disk_dao,
+        "read_contacts",
+        lambda: [
+            contact_fixtures.build(
+                id=1,
+                name=model.Name(first_name="John", last_name="Smith"),
+                education=model.Education(
+                    high_school=model.HighSchool(name="Brookline High School"),
+                    bachelor=model.University(name="Harvard University"),
+                ),
+            ),
+        ],
+    )
+
     options = service.list_contact_field_options()
 
     assert "Ireland" in options["countries"]

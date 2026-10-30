@@ -192,8 +192,8 @@ function useRowList<T extends IdRow>(initialRows: T[], makeRow: () => Omit<T, "i
 
   // Stable identities (no deps) so row components below can be memoized:
   // typing in one row's fields only re-renders that row instead of the
-  // whole form (and, for Education in particular, the hundreds of
-  // <MenuItem>s MUI builds for the school dropdowns on every keystroke).
+  // whole form (and, for Education in particular, the hundreds of options
+  // the school Autocompletes filter on every keystroke).
   const remove = useCallback((id: string) => {
     setRows((prev) => prev.filter((row) => row.id !== id));
   }, []);
@@ -371,21 +371,15 @@ const EducationLevelFields = memo(function EducationLevelFields({
         {EDUCATION_LABELS[level]}
       </Typography>
       <RowGrid>
-        <TextField
-          label="School"
-          select
+        <Autocomplete
+          freeSolo
+          options={schoolOptions}
           value={row.name}
-          onChange={(e) => onUpdate(level, { name: e.target.value })}
-          size="small"
+          onChange={(_event, newValue) => onUpdate(level, { name: newValue ?? "" })}
+          onInputChange={(_event, newValue) => onUpdate(level, { name: newValue })}
+          renderInput={(params) => <TextField {...params} label="School" size="small" />}
           sx={{ gridColumn: "span 2" }}
-        >
-          <MenuItem value="">—</MenuItem>
-          {schoolOptions.map((school) => (
-            <MenuItem key={school} value={school}>
-              {school}
-            </MenuItem>
-          ))}
-        </TextField>
+        />
         <TextField
           label="Graduation Year"
           type="number"

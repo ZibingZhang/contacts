@@ -16,9 +16,6 @@ class HighSchool(dataclasses_utils.DataClassJsonMixin):
     name: str
     graduation_year: int | None = None
 
-    def __post_init__(self):
-        assert self.name in enumeration.HighSchoolName.values()
-
 
 @dataclasses.dataclass(repr=False)
 class University(dataclasses_utils.DataClassJsonMixin):
@@ -26,9 +23,6 @@ class University(dataclasses_utils.DataClassJsonMixin):
     graduation_year: int | None = None
     majors: list[str] | None = None
     minors: list[str] | None = None
-
-    def __post_init__(self):
-        assert self.name in enumeration.UniversityName.values()
 
 
 @dataclasses.dataclass(repr=False)
