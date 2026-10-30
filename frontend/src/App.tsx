@@ -418,6 +418,19 @@ export function App() {
     setSelectionMode(false);
   }
 
+  function handleExportSelected() {
+    const selected = contacts.filter((contact) => selectedIds.has(contact.id));
+    const lines = selected.map((contact) => "  " + JSON.stringify(contact));
+    const json = "[\n" + lines.join(",\n") + "\n]";
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "contacts.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <Box sx={{ display: "flex", height: "100vh" }}>
       <Sidebar
@@ -444,6 +457,7 @@ export function App() {
         onSelectAllVisible={selectAllVisible}
         onClearSelection={() => setSelectedIds(new Set())}
         onAddTags={() => setShowBatchTagModal(true)}
+        onExportSelected={handleExportSelected}
         onNewContact={() => {
           setCopySourceContact(null);
           setEditingContactId("new");

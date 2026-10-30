@@ -61,6 +61,7 @@ interface SidebarProps {
   onSelectAllVisible: () => void;
   onClearSelection: () => void;
   onAddTags: () => void;
+  onExportSelected: () => void;
   onNewContact: () => void;
   syncing: boolean;
   syncDirection: SyncDirection | null;
@@ -95,6 +96,7 @@ export function Sidebar({
   onSelectAllVisible,
   onClearSelection,
   onAddTags,
+  onExportSelected,
   onNewContact,
   syncing,
   syncDirection,
@@ -314,10 +316,19 @@ export function Sidebar({
           </Button>
           <Button
             size="small"
+            variant="outlined"
+            color="inherit"
+            onClick={onExportSelected}
+            disabled={selectedIds.size === 0}
+            sx={{ ml: "auto" }}
+          >
+            Export
+          </Button>
+          <Button
+            size="small"
             variant="contained"
             onClick={onAddTags}
             disabled={selectedIds.size === 0}
-            sx={{ ml: "auto" }}
           >
             Add tags…
           </Button>
