@@ -220,8 +220,12 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function RowGrid({ children }: { children: ReactNode }) {
-  return <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 1.5 }}>{children}</Box>;
+function RowGrid({ children, mt }: { children: ReactNode; mt?: number }) {
+  return (
+    <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 1.5, mt }}>
+      {children}
+    </Box>
+  );
 }
 
 function RemovableRow({ onRemove, children }: { onRemove: () => void; children: ReactNode }) {
@@ -448,6 +452,7 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
     last_name: source?.name?.last_name ?? "",
     nickname: source?.name?.nickname ?? "",
     maiden_name: source?.name?.maiden_name ?? "",
+    deadname: source?.name?.deadname ?? "",
     suffix: source?.name?.suffix ?? "",
     chinese_name: source?.name?.chinese_name ?? "",
   });
@@ -683,10 +688,13 @@ export function ContactForm({ contact, prefillFrom, allTags, onCancel, onSaved }
           <TextField label="First Name" value={name.first_name} onChange={(e) => setName({ ...name, first_name: e.target.value })} size="small" autoFocus />
           <TextField label="Middle Name" value={name.middle_name} onChange={(e) => setName({ ...name, middle_name: e.target.value })} size="small" />
           <TextField label="Last Name" value={name.last_name} onChange={(e) => setName({ ...name, last_name: e.target.value })} size="small" />
+          <TextField label="Suffix" value={name.suffix} onChange={(e) => setName({ ...name, suffix: e.target.value })} size="small" />
+        </RowGrid>
+        <RowGrid mt={1.5}>
           <TextField label="Nickname" value={name.nickname} onChange={(e) => setName({ ...name, nickname: e.target.value })} size="small" />
           <TextField label="Maiden Name" value={name.maiden_name} onChange={(e) => setName({ ...name, maiden_name: e.target.value })} size="small" />
-          <TextField label="Suffix" value={name.suffix} onChange={(e) => setName({ ...name, suffix: e.target.value })} size="small" />
           <TextField label="Chinese Name" value={name.chinese_name} onChange={(e) => setName({ ...name, chinese_name: e.target.value })} size="small" />
+          <TextField label="Deadname" value={name.deadname} onChange={(e) => setName({ ...name, deadname: e.target.value })} size="small" />
         </RowGrid>
       </Section>
 

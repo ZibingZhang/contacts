@@ -5,6 +5,7 @@ export interface Name {
   last_name?: string;
   nickname?: string;
   maiden_name?: string;
+  deadname?: string;
   suffix?: string;
   chinese_name?: string;
 }
