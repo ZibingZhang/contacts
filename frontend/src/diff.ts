@@ -101,13 +101,15 @@ export function formatDiffValue(value: unknown): string {
 
 // Renders a list-item object (EmailAddress, PhoneNumber, StreetAddress, ...)
 // as "<main value> (<label>)" instead of a raw JSON dump. `label` and
-// `country_code` are treated as decoration rather than main content.
+// `country_code` are treated as decoration rather than main content. Nested
+// objects (e.g. each platform under social_profiles) are recursed into and
+// prefixed with their key, rather than being passed to String().
 function formatDiffObject(value: Record<string, unknown>): string {
   const { label, country_code, ...rest } = value;
-  const main = Object.values(rest)
-    .flatMap((v) => (Array.isArray(v) ? v : [v]))
-    .filter((v) => v !== null && v !== undefined && v !== "")
-    .map(String)
+  const main = Object.entries(rest)
+    .flatMap(([key, v]) => (Array.isArray(v) ? v.map((item) => [key, item] as const) : [[key, v] as const]))
+    .filter(([, v]) => v !== null && v !== undefined && v !== "")
+    .map(([key, v]) => (isPlainObject(v) ? `${key}: ${formatDiffObject(v)}` : String(v)))
     .join(", ");
 
   if (main && label) return `${main} (${label})`;
