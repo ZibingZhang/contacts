@@ -203,6 +203,15 @@ def _extract_notes(contact: model.Contact) -> nt.Notes:
                     contact.education.high_school.graduation_year
                 )
 
+        if contact.education.law is not None:
+            education.law = nt.School(name=contact.education.law.name)
+            if contact.education.law.graduation_year is not None:
+                education.law.grad_year = contact.education.law.graduation_year
+            if contact.education.law.majors is not None:
+                education.law.majors = ", ".join(contact.education.law.majors)
+            if contact.education.law.minors is not None:
+                education.law.minors = ", ".join(contact.education.law.minors)
+
         if contact.education.master is not None:
             education.master = nt.School(name=contact.education.master.name)
             if contact.education.master.graduation_year is not None:
@@ -211,6 +220,24 @@ def _extract_notes(contact: model.Contact) -> nt.Notes:
                 education.master.majors = ", ".join(contact.education.master.majors)
             if contact.education.master.minors is not None:
                 education.master.minors = ", ".join(contact.education.master.minors)
+
+        if contact.education.medical is not None:
+            education.medical = nt.School(name=contact.education.medical.name)
+            if contact.education.medical.graduation_year is not None:
+                education.medical.grad_year = contact.education.medical.graduation_year
+            if contact.education.medical.majors is not None:
+                education.medical.majors = ", ".join(contact.education.medical.majors)
+            if contact.education.medical.minors is not None:
+                education.medical.minors = ", ".join(contact.education.medical.minors)
+
+        if contact.education.phd is not None:
+            education.phd = nt.School(name=contact.education.phd.name)
+            if contact.education.phd.graduation_year is not None:
+                education.phd.grad_year = contact.education.phd.graduation_year
+            if contact.education.phd.majors is not None:
+                education.phd.majors = ", ".join(contact.education.phd.majors)
+            if contact.education.phd.minors is not None:
+                education.phd.minors = ", ".join(contact.education.phd.minors)
 
         notes.education = education
 

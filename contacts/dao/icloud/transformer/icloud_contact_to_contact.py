@@ -234,6 +234,15 @@ def _extract_from_notes(contact: model.Contact, notes: nt.Notes) -> None:
                     notes.education.high_school.grad_year
                 )
 
+        if notes.education.law:
+            education.law = model.University(name=notes.education.law.name)
+            if notes.education.law.grad_year:
+                education.law.graduation_year = notes.education.law.grad_year
+            if notes.education.law.majors:
+                education.law.majors = notes.education.law.majors.split(", ")
+            if notes.education.law.minors:
+                education.law.minors = notes.education.law.minors.split(", ")
+
         if notes.education.master:
             education.master = model.University(name=notes.education.master.name)
             if notes.education.master.grad_year:
@@ -242,5 +251,23 @@ def _extract_from_notes(contact: model.Contact, notes: nt.Notes) -> None:
                 education.master.majors = notes.education.master.majors.split(", ")
             if notes.education.master.minors:
                 education.master.minors = notes.education.master.minors.split(", ")
+
+        if notes.education.medical:
+            education.medical = model.University(name=notes.education.medical.name)
+            if notes.education.medical.grad_year:
+                education.medical.graduation_year = notes.education.medical.grad_year
+            if notes.education.medical.majors:
+                education.medical.majors = notes.education.medical.majors.split(", ")
+            if notes.education.medical.minors:
+                education.medical.minors = notes.education.medical.minors.split(", ")
+
+        if notes.education.phd:
+            education.phd = model.University(name=notes.education.phd.name)
+            if notes.education.phd.grad_year:
+                education.phd.graduation_year = notes.education.phd.grad_year
+            if notes.education.phd.majors:
+                education.phd.majors = notes.education.phd.majors.split(", ")
+            if notes.education.phd.minors:
+                education.phd.minors = notes.education.phd.minors.split(", ")
 
         contact.education = education

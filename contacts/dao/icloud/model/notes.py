@@ -19,7 +19,10 @@ class School(dataclasses_utils.DataClassJsonMixin):
 class Education(dataclasses_utils.DataClassJsonMixin):
     bachelor: School | None = None
     high_school: School | None = None
+    law: School | None = None
     master: School | None = None
+    medical: School | None = None
+    phd: School | None = None
 
 
 @dataclasses.dataclass(repr=False)
