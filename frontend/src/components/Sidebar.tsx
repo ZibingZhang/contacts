@@ -7,6 +7,8 @@ import { SearchBar } from "./SearchBar";
 import { FilterDropdown } from "./FilterDropdown";
 import { ContactList } from "./ContactList";
 import { AlphaIndex } from "./AlphaIndex";
+import { useThemeSettings, type AppearanceMode } from "../theme/ThemeSettingsContext";
+import { PALETTE_LABELS, type PaletteName } from "../theme/palettes";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
@@ -14,11 +16,81 @@ import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
+import Divider from "@mui/material/Divider";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import TerminalIcon from "@mui/icons-material/Terminal";
+import PaletteIcon from "@mui/icons-material/Palette";
+import CheckIcon from "@mui/icons-material/Check";
+
+const APPEARANCE_MODES: { value: AppearanceMode; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
+
+const PALETTE_NAMES: PaletteName[] = ["default", "solarized", "rose-pine"];
+
+function AppearanceMenu() {
+  const { mode, setMode, palette, setPalette } = useThemeSettings();
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+
+  return (
+    <>
+      <Tooltip title="Appearance">
+        <IconButton
+          id="appearance-button"
+          size="small"
+          aria-label="Change appearance"
+          onClick={(event) => setAnchorEl(event.currentTarget)}
+        >
+          <PaletteIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
+        <Typography variant="caption" color="text.secondary" sx={{ px: 2, py: 0.5, display: "block" }}>
+          Appearance
+        </Typography>
+        {APPEARANCE_MODES.map(({ value, label }) => (
+          <MenuItem
+            key={value}
+            selected={mode === value}
+            onClick={() => {
+              setMode(value);
+              setAnchorEl(null);
+            }}
+          >
+            <ListItemIcon>{mode === value ? <CheckIcon fontSize="small" /> : null}</ListItemIcon>
+            <ListItemText>{label}</ListItemText>
+          </MenuItem>
+        ))}
+        <Divider />
+        <Typography variant="caption" color="text.secondary" sx={{ px: 2, py: 0.5, display: "block" }}>
+          Palette
+        </Typography>
+        {PALETTE_NAMES.map((name) => (
+          <MenuItem
+            key={name}
+            selected={palette === name}
+            onClick={() => {
+              setPalette(name);
+              setAnchorEl(null);
+            }}
+          >
+            <ListItemIcon>{palette === name ? <CheckIcon fontSize="small" /> : null}</ListItemIcon>
+            <ListItemText>{PALETTE_LABELS[name]}</ListItemText>
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
+  );
+}
 
 export type ListStatus = "loading" | "error" | "ready";
 
@@ -314,6 +386,7 @@ export function Sidebar({
               <TerminalIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          <AppearanceMenu />
         </Box>
       </Box>
 

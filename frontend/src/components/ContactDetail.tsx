@@ -17,6 +17,7 @@ import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
+import Link from "@mui/material/Link";
 
 function NameHeader({
   contact,
@@ -63,9 +64,9 @@ function NameHeader({
 
 function ExternalLink({ href, children }: { href: string; children: string }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer">
+    <Link href={href} target="_blank" rel="noopener noreferrer">
       {children}
-    </a>
+    </Link>
   );
 }
 
@@ -184,7 +185,7 @@ export function ContactDetail({
           rows={contact.email_addresses.map((email, index) =>
             fieldRow(
               email.label || "Email",
-              <a href={`mailto:${email.address}`}>{email.address}</a>,
+              <Link href={`mailto:${email.address}`}>{email.address}</Link>,
               `${email.label ?? "email"}-${index}`
             )
           )}
