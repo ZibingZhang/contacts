@@ -7,13 +7,12 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import Button from "@mui/material/Button";
-import IconButton from "@mui/material/IconButton";
 import Checkbox from "@mui/material/Checkbox";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
 import Divider from "@mui/material/Divider";
-import CloseIcon from "@mui/icons-material/Close";
+import DialogCloseButton from "./DialogCloseButton";
 
 export type SyncDirection = "pull" | "push";
 
@@ -81,13 +80,7 @@ export function SyncReviewModal({ review, direction, onCancel, onApply }: SyncRe
     <Dialog id="sync-review-modal" open onClose={onCancel} maxWidth="md" fullWidth>
       <DialogTitle>
         {copy.title}
-        <IconButton
-          aria-label="Close"
-          onClick={onCancel}
-          sx={{ position: "absolute", right: 8, top: 8 }}
-        >
-          <CloseIcon />
-        </IconButton>
+        <DialogCloseButton onClick={onCancel} />
       </DialogTitle>
       <DialogContent dividers sx={{ maxHeight: "60vh" }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>

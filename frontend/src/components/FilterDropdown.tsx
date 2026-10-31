@@ -299,7 +299,7 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
               emptyMessage={query ? "No matching values" : "No values"}
             />
           ) : activeGroup ? (
-            <List id="filter-group-fields" dense disablePadding sx={{ maxHeight: 280, overflowY: "auto" }}>
+            <List id="filter-group-fields" dense disablePadding sx={{ maxHeight: VIEWPORT_HEIGHT, overflowY: "auto" }}>
               {showGroupNoneOption && (
                 <>
                   <ListItemButton
@@ -338,7 +338,7 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
               )}
             </List>
           ) : (
-            <List id="filter-fields" dense disablePadding sx={{ maxHeight: 280, overflowY: "auto" }}>
+            <List id="filter-fields" dense disablePadding sx={{ maxHeight: VIEWPORT_HEIGHT, overflowY: "auto" }}>
               {visibleMenuEntries.length === 0 ? (
                 <Typography color="text.secondary" variant="body2" sx={{ px: 2, py: 1 }}>
                   No matching fields

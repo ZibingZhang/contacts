@@ -5,13 +5,12 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import Button from "@mui/material/Button";
-import IconButton from "@mui/material/IconButton";
 import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 import Chip from "@mui/material/Chip";
 import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
-import CloseIcon from "@mui/icons-material/Close";
+import DialogCloseButton from "./DialogCloseButton";
 
 interface BatchTagModalProps {
   contactCount: number;
@@ -43,13 +42,7 @@ export function BatchTagModal({ contactCount, allTags, onCancel, onSubmit }: Bat
     <Dialog id="batch-tag-modal" open onClose={onCancel} maxWidth="sm" fullWidth>
       <DialogTitle>
         Add tags to {contactCount} contact{contactCount === 1 ? "" : "s"}
-        <IconButton
-          aria-label="Close"
-          onClick={onCancel}
-          sx={{ position: "absolute", right: 8, top: 8 }}
-        >
-          <CloseIcon />
-        </IconButton>
+        <DialogCloseButton onClick={onCancel} />
       </DialogTitle>
       <DialogContent>
         <Autocomplete

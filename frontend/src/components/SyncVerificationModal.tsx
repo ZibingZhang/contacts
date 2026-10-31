@@ -5,14 +5,13 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import Button from "@mui/material/Button";
-import IconButton from "@mui/material/IconButton";
 import TextField from "@mui/material/TextField";
 import RadioGroup from "@mui/material/RadioGroup";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Radio from "@mui/material/Radio";
 import Alert from "@mui/material/Alert";
 import Typography from "@mui/material/Typography";
-import CloseIcon from "@mui/icons-material/Close";
+import DialogCloseButton from "./DialogCloseButton";
 
 interface SyncVerificationModalProps {
   challenge: SyncRequiresVerification;
@@ -65,13 +64,7 @@ export function SyncVerificationModal({
     <Dialog id="sync-verification-modal" open onClose={onCancel} maxWidth="sm" fullWidth>
       <DialogTitle>
         iCloud verification required
-        <IconButton
-          aria-label="Close"
-          onClick={onCancel}
-          sx={{ position: "absolute", right: 8, top: 8 }}
-        >
-          <CloseIcon />
-        </IconButton>
+        <DialogCloseButton onClick={onCancel} />
       </DialogTitle>
       <DialogContent>
         {step === "device" ? (
