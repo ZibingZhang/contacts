@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
-from contacts.server import errors, service
+from contacts.server import admin_console_service, errors, service
 
 bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -123,7 +123,7 @@ def create_contact():
     if not isinstance(body, dict):
         raise errors.ValidationError("Request body must be a JSON object")
 
-    data = {k: v for k, v in body.items() if k not in ("id", "mtime", "icloud")}
+    data = {k: v for k, v in body.items() if k not in ("id", "ctime", "mtime", "icloud")}
     contact = service.create_contact(data)
     return jsonify(contact.to_dict()), 201
 
@@ -142,7 +142,7 @@ def update_contact(contact_id: int):
     if not isinstance(body, dict):
         raise errors.ValidationError("Request body must be a JSON object")
 
-    data = {k: v for k, v in body.items() if k not in ("id", "mtime", "icloud")}
+    data = {k: v for k, v in body.items() if k not in ("id", "ctime", "mtime", "icloud")}
     contact = service.update_contact(contact_id, data)
     return jsonify(contact.to_dict())
 
@@ -182,3 +182,26 @@ def batch_add_tags():
             "tags": service.list_tags(),
         }
     )
+
+
+@bp.post("/admin/query")
+def admin_query():
+    sql = _validate_sql_body(request.get_json(silent=True))
+    return jsonify(admin_console_service.run_readonly_query(sql))
+
+
+@bp.post("/admin/execute")
+def admin_execute():
+    sql = _validate_sql_body(request.get_json(silent=True))
+    return jsonify(admin_console_service.run_query(sql))
+
+
+def _validate_sql_body(body: dict | None) -> str:
+    if not isinstance(body, dict):
+        raise errors.ValidationError("Request body must be a JSON object")
+
+    sql = body.get("sql")
+    if not isinstance(sql, str) or not sql.strip():
+        raise errors.ValidationError("sql must be a non-empty string")
+
+    return sql.strip()

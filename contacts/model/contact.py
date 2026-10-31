@@ -160,6 +160,7 @@ class Contact(dataclasses_utils.DataClassJsonMixin):
     tags: list[str] | None = None
 
     # Meta information
+    ctime: float | None = None
     mtime: float | None = None
 
     # iCloud specific

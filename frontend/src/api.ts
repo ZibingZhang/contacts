@@ -3,6 +3,7 @@ import type {
   Contact,
   ContactFieldOptions,
   ContactsResponse,
+  QueryResult,
   SyncResult,
   TagsResponse,
 } from "./types";
@@ -123,6 +124,14 @@ export function applyPushReview(createIcloudIds: string[], updateIcloudIds: stri
     create_icloud_ids: createIcloudIds,
     update_icloud_ids: updateIcloudIds,
   });
+}
+
+export function runReadonlyQuery(sql: string): Promise<QueryResult> {
+  return apiPost<QueryResult>("/admin/query", { sql });
+}
+
+export function runQuery(sql: string): Promise<QueryResult> {
+  return apiPost<QueryResult>("/admin/execute", { sql });
 }
 
 export function apiBaseUrl(): string {

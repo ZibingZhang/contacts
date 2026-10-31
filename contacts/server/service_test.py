@@ -183,6 +183,28 @@ def test_update_contact_writes_and_returns_updated_contact(monkeypatch, contacts
     assert written == [[updated]]
 
 
+def test_update_contact_preserves_existing_ctime(monkeypatch, contacts) -> None:
+    contacts[0].ctime = 123.0
+    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+
+    updated = service.update_contact(1, {"name": {"first_name": "Johnny"}})
+
+    assert updated.ctime == 123.0
+
+
+def test_update_contact_ignores_client_supplied_ctime(monkeypatch, contacts) -> None:
+    contacts[0].ctime = 123.0
+    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+
+    updated = service.update_contact(
+        1, {"name": {"first_name": "Johnny"}, "ctime": 999.0}
+    )
+
+    assert updated.ctime == 123.0
+
+
 def test_update_contact_missing_id_raises(monkeypatch, contacts) -> None:
     monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
 

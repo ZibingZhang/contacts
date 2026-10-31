@@ -25,6 +25,7 @@ def _create_parser() -> argparse.ArgumentParser:
     _build_add_command_parser(command_parser)
     _build_birthday_command_parser(command_parser)
     _build_families_command_parser(command_parser)
+    _build_migrate_contacts_to_sqlite_command_parser(command_parser)
     _build_pull_command_parser(command_parser)
     _build_push_command_parser(command_parser)
     _build_serve_command_parser(command_parser)
@@ -64,6 +65,16 @@ def _build_families_command_parser(command_parser: argparse._SubParsersAction) -
         command.Command.FAMILIES.value,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         help="view all families",
+    )
+
+
+def _build_migrate_contacts_to_sqlite_command_parser(
+    command_parser: argparse._SubParsersAction,
+) -> None:
+    command_parser.add_parser(
+        command.Command.MIGRATE_CONTACTS_TO_SQLITE.value,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="one-off migration of contacts from data/contacts/*.json to SQLite",
     )
 
 

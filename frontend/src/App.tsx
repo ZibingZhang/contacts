@@ -24,6 +24,7 @@ import { BatchTagModal } from "./components/BatchTagModal";
 import { ContactForm } from "./components/ContactForm";
 import { SyncVerificationModal } from "./components/SyncVerificationModal";
 import { SyncReviewModal, type SyncDirection } from "./components/SyncReviewModal";
+import { AdminConsoleModal } from "./components/AdminConsoleModal";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
@@ -83,6 +84,7 @@ export function App() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncChallenge, setSyncChallenge] = useState<SyncRequiresVerification | null>(null);
   const [syncReview, setSyncReview] = useState<SyncReview | null>(null);
+  const [showAdminConsole, setShowAdminConsole] = useState(false);
 
   const listRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -499,6 +501,7 @@ export function App() {
           setSyncMessage(null);
           setSyncError(null);
         }}
+        onOpenAdminConsole={() => setShowAdminConsole(true)}
       />
 
       <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
@@ -557,6 +560,8 @@ export function App() {
           onApply={handleSyncReviewApply}
         />
       )}
+
+      {showAdminConsole && <AdminConsoleModal onClose={() => setShowAdminConsole(false)} />}
     </Box>
   );
 }

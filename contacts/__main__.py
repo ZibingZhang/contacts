@@ -25,6 +25,9 @@ def _run_command(cl_args: argparse.Namespace) -> None:
         case command.Command.FAMILIES:
             command.families.run()
 
+        case command.Command.MIGRATE_CONTACTS_TO_SQLITE:
+            command.migrate_contacts_to_sqlite.run()
+
         case command.Command.PULL:
             if not cl_args.cached:
                 icloud_dao.authenticate()

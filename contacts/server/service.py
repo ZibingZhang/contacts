@@ -65,7 +65,7 @@ def create_contact(data: dict) -> model.DiskContact:
 
     Args:
         data: Contact field data matching model.Contact's JSON shape (no
-            "id", "mtime", or "icloud" -- those are assigned here).
+            "id", "ctime", "mtime", or "icloud" -- those are assigned here).
 
     Returns:
         The newly created contact, with its assigned id.
@@ -94,7 +94,8 @@ def update_contact(contact_id: int, data: dict) -> model.DiskContact:
     Args:
         contact_id: The id of the contact to update.
         data: Contact field data matching model.Contact's JSON shape (no
-            "id", "mtime", or "icloud" -- those are preserved/assigned here).
+            "id", "ctime", "mtime", or "icloud" -- those are preserved/assigned
+            here).
 
     Returns:
         The updated contact.
@@ -113,6 +114,7 @@ def update_contact(contact_id: int, data: dict) -> model.DiskContact:
         raise errors.ValidationError(f"Invalid contact data: {e}") from e
 
     contact.id = contact_id
+    contact.ctime = existing_contact.ctime
     contact.mtime = time.time()
     contact.icloud = existing_contact.icloud
 

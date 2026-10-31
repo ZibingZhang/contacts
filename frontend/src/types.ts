@@ -153,3 +153,10 @@ export interface SyncReview {
 }
 
 export type SyncResult = SyncComplete | SyncRequiresVerification | SyncReview;
+
+export interface QueryResult {
+  columns: string[] | null;
+  rows: unknown[][] | null;
+  rowcount: number;
+  truncated: boolean;
+}

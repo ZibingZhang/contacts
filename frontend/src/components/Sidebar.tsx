@@ -18,6 +18,7 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import TerminalIcon from "@mui/icons-material/Terminal";
 
 export type ListStatus = "loading" | "error" | "ready";
 
@@ -70,6 +71,7 @@ interface SidebarProps {
   onPull: () => void;
   onPush: () => void;
   onDismissSyncStatus: () => void;
+  onOpenAdminConsole: () => void;
 }
 
 export function Sidebar({
@@ -105,6 +107,7 @@ export function Sidebar({
   onPull,
   onPush,
   onDismissSyncStatus,
+  onOpenAdminConsole,
 }: SidebarProps) {
   const [width, setWidth] = useState(readStoredWidth);
   const [collapsed, setCollapsed] = useState(readStoredCollapsed);
@@ -275,7 +278,7 @@ export function Sidebar({
           />
         </Box>
 
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Button id="new-contact-button" size="small" variant="contained" onClick={onNewContact}>
             New Contact
           </Button>
@@ -289,9 +292,9 @@ export function Sidebar({
           >
             {selectionMode ? "Done" : "Select"}
           </Button>
+        </Box>
 
-          <Box sx={{ flexGrow: 1 }} />
-
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Tooltip title="Pull new/changed contacts from iCloud to review here.">
             <span>
               <IconButton id="pull-button" size="small" aria-label="Pull from iCloud" disabled={syncing} onClick={onPull}>
@@ -305,6 +308,11 @@ export function Sidebar({
                 {syncing && syncDirection === "push" ? <CircularProgress size={18} /> : <CloudUploadIcon fontSize="small" />}
               </IconButton>
             </span>
+          </Tooltip>
+          <Tooltip title="Open admin console">
+            <IconButton id="admin-console-button" size="small" aria-label="Open admin console" onClick={onOpenAdminConsole}>
+              <TerminalIcon fontSize="small" />
+            </IconButton>
           </Tooltip>
         </Box>
       </Box>
