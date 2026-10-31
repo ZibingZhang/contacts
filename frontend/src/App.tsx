@@ -19,6 +19,7 @@ import { contactLetter } from "./search";
 import { sameFilter, type SelectedFilter } from "./filters";
 import { useDebouncedValue, useFilteredContactIds, isTypingTarget } from "./hooks";
 import { Sidebar, type ListStatus } from "./components/Sidebar";
+import { TopBar } from "./components/TopBar";
 import { ContactDetail } from "./components/ContactDetail";
 import { BatchTagModal } from "./components/BatchTagModal";
 import { ContactForm } from "./components/ContactForm";
@@ -34,6 +35,12 @@ function networkErrorMessage(error: unknown): string {
     return error.message;
   }
   return `Could not reach the contacts API at ${apiBaseUrl()} — is \`python -m contacts serve\` running?`;
+}
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "contacts.sidebar.collapsed";
+
+function readStoredSidebarCollapsed(): boolean {
+  return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
 }
 
 function paramsFromLocation(): { query: string; filters: SelectedFilter[]; contactId: number | null } {
@@ -85,6 +92,11 @@ export function App() {
   const [syncChallenge, setSyncChallenge] = useState<SyncRequiresVerification | null>(null);
   const [syncReview, setSyncReview] = useState<SyncReview | null>(null);
   const [showAdminConsole, setShowAdminConsole] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   const listRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -461,77 +473,88 @@ export function App() {
   }
 
   return (
-    <Box sx={{ display: "flex", height: "100vh" }}>
-      <Sidebar
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        allContacts={contacts}
-        selectedFilters={selectedFilters}
-        onToggleFilter={toggleFilter}
-        onClearFilters={() => setSelectedFilters([])}
-        listStatus={listStatus}
-        loadError={loadError}
-        contacts={visibleContacts}
-        grouped={grouped}
-        selectedContactId={selectedContactId}
-        onSelectContact={handleSelectContact}
-        lettersPresent={lettersPresent}
-        onJumpToLetter={jumpToLetter}
-        listRef={listRef}
-        scrollContainerRef={scrollContainerRef}
-        selectionMode={selectionMode}
-        onToggleSelectionMode={toggleSelectionMode}
-        selectedIds={selectedIds}
-        onToggleSelect={toggleContactSelection}
-        onSelectAllVisible={selectAllVisible}
-        onClearSelection={() => setSelectedIds(new Set())}
-        onAddTags={() => setShowBatchTagModal(true)}
-        onExportSelected={handleExportSelected}
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+      <TopBar
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebarCollapsed={() => setSidebarCollapsed((prev) => !prev)}
         onNewContact={() => {
           setCopySourceContact(null);
           setEditingContactId("new");
         }}
+        selectionMode={selectionMode}
+        onToggleSelectionMode={toggleSelectionMode}
+        selectedCount={selectedIds.size}
+        onSelectAllVisible={selectAllVisible}
+        onClearSelection={() => setSelectedIds(new Set())}
+        onAddTags={() => setShowBatchTagModal(true)}
+        onExportSelected={handleExportSelected}
         syncing={syncing}
         syncDirection={syncDirection}
-        syncMessage={syncMessage}
-        syncError={syncError}
         onPull={() => handleStartSync("pull")}
         onPush={() => handleStartSync("push")}
-        onDismissSyncStatus={() => {
-          setSyncMessage(null);
-          setSyncError(null);
-        }}
         onOpenAdminConsole={() => setShowAdminConsole(true)}
       />
 
-      <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
-        {editingContactId !== null ? (
-          <ContactForm
-            key={editingContactId}
-            contact={editingContactId === "new" ? null : contacts.find((c) => c.id === editingContactId) ?? null}
-            prefillFrom={editingContactId === "new" ? copySourceContact : null}
-            allTags={tags}
-            onCancel={() => {
-              setEditingContactId(null);
-              setCopySourceContact(null);
+      <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
+        {!sidebarCollapsed && (
+          <Sidebar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            allContacts={contacts}
+            selectedFilters={selectedFilters}
+            onToggleFilter={toggleFilter}
+            onClearFilters={() => setSelectedFilters([])}
+            listStatus={listStatus}
+            loadError={loadError}
+            contacts={visibleContacts}
+            grouped={grouped}
+            selectedContactId={selectedContactId}
+            onSelectContact={handleSelectContact}
+            lettersPresent={lettersPresent}
+            onJumpToLetter={jumpToLetter}
+            listRef={listRef}
+            scrollContainerRef={scrollContainerRef}
+            selectionMode={selectionMode}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleContactSelection}
+            syncMessage={syncMessage}
+            syncError={syncError}
+            onDismissSyncStatus={() => {
+              setSyncMessage(null);
+              setSyncError(null);
             }}
-            onSaved={handleContactSaved}
           />
-        ) : (
-          <Box sx={{ pt: 4 }}>
-            {selectedContact ? (
-              <ContactDetail
-                contact={selectedContact}
-                onEdit={() => setEditingContactId(selectedContact.id)}
-                onCopy={() => handleCopyContact(selectedContact)}
-              />
-            ) : selectedContactId !== null ? (
-              <Alert severity="error">Contact not found.</Alert>
-            ) : (
-              <Typography color="text.secondary">Select a contact to see their details.</Typography>
-            )}
-          </Box>
         )}
+
+        <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
+          {editingContactId !== null ? (
+            <ContactForm
+              key={editingContactId}
+              contact={editingContactId === "new" ? null : contacts.find((c) => c.id === editingContactId) ?? null}
+              prefillFrom={editingContactId === "new" ? copySourceContact : null}
+              allTags={tags}
+              onCancel={() => {
+                setEditingContactId(null);
+                setCopySourceContact(null);
+              }}
+              onSaved={handleContactSaved}
+            />
+          ) : (
+            <Box sx={{ pt: 4 }}>
+              {selectedContact ? (
+                <ContactDetail
+                  contact={selectedContact}
+                  onEdit={() => setEditingContactId(selectedContact.id)}
+                  onCopy={() => handleCopyContact(selectedContact)}
+                />
+              ) : selectedContactId !== null ? (
+                <Alert severity="error">Contact not found.</Alert>
+              ) : (
+                <Typography color="text.secondary">Select a contact to see their details.</Typography>
+              )}
+            </Box>
+          )}
+        </Box>
       </Box>
 
       {showBatchTagModal && (
