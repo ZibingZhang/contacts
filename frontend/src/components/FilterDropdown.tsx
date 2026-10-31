@@ -56,7 +56,9 @@ interface FilterDropdownProps {
 // ListItemButton/Checkbox/Chip at once (even though only ~6 are visible in
 // the 280px viewport) is what was actually making field switches feel slow,
 // not the value-counting itself.
-const ROW_HEIGHT = 36;
+// Matches the small Checkbox's actual rendered height (MUI's SwitchBase applies a
+// fixed 9px padding top and bottom around the 20px icon) so it fits with no overflow.
+const ROW_HEIGHT = 38;
 const VIEWPORT_HEIGHT = 280;
 const OVERSCAN = 4;
 
