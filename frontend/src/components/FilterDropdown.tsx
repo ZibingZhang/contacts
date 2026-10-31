@@ -56,7 +56,7 @@ interface FilterDropdownProps {
 // ListItemButton/Checkbox/Chip at once (even though only ~6 are visible in
 // the 280px viewport) is what was actually making field switches feel slow,
 // not the value-counting itself.
-const ROW_HEIGHT = 46;
+const ROW_HEIGHT = 36;
 const VIEWPORT_HEIGHT = 280;
 const OVERSCAN = 4;
 
@@ -98,8 +98,13 @@ function VirtualValueList({ values, selectedFilters, fieldId, onToggleFilter, em
             const filter: SelectedFilter = { field: fieldId, value };
             const checked = selectedFilters.some((selected) => sameFilter(selected, filter));
             return (
-              <ListItemButton key={value} onClick={() => onToggleFilter(filter)} dense sx={{ height: ROW_HEIGHT }}>
-                <ListItemIcon sx={{ minWidth: 0, mr: 1 }}>
+              <ListItemButton
+                key={value}
+                onClick={() => onToggleFilter(filter)}
+                dense
+                sx={{ height: ROW_HEIGHT, py: 0 }}
+              >
+                <ListItemIcon sx={{ minWidth: 0, mr: 0.5 }}>
                   <Checkbox edge="start" checked={checked} size="small" disableRipple tabIndex={-1} />
                 </ListItemIcon>
                 <ListItemText primary={filterValueLabel(value)} slotProps={{ primary: { noWrap: true } }} />
@@ -264,8 +269,13 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
             <>
               <List id="filter-selected" dense disablePadding>
                 {selectedFilters.map((filter) => (
-                  <ListItemButton key={`${filter.field}:${filter.value}`} onClick={() => onToggleFilter(filter)} dense>
-                    <ListItemIcon sx={{ minWidth: 0, mr: 1 }}>
+                  <ListItemButton
+                    key={`${filter.field}:${filter.value}`}
+                    onClick={() => onToggleFilter(filter)}
+                    dense
+                    sx={{ py: 0.25 }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 0, mr: 0.5 }}>
                       <Checkbox edge="start" checked size="small" disableRipple tabIndex={-1} />
                     </ListItemIcon>
                     <ListItemText
@@ -295,8 +305,9 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
                   <ListItemButton
                     onClick={() => onToggleFilter({ field: activeGroup.noneField.id, value: NONE_FILTER_VALUE })}
                     dense
+                    sx={{ py: 0.25 }}
                   >
-                    <ListItemIcon sx={{ minWidth: 0, mr: 1 }}>
+                    <ListItemIcon sx={{ minWidth: 0, mr: 0.5 }}>
                       <Checkbox
                         edge="start"
                         checked={selectedFilters.some((selected) =>
@@ -319,7 +330,7 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
                 </Typography>
               ) : (
                 visibleGroupFields.map((field) => (
-                  <ListItemButton key={field.id} onClick={() => openField(field.id)} dense>
+                  <ListItemButton key={field.id} onClick={() => openField(field.id)} dense sx={{ py: 0.25 }}>
                     <ListItemText primary={field.label} />
                     <ChevronRightIcon fontSize="small" color="action" />
                   </ListItemButton>
@@ -338,6 +349,7 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
                     key={entry.id}
                     onClick={() => (isFilterFieldGroup(entry) ? openGroup(entry.id) : openField(entry.id))}
                     dense
+                    sx={{ py: 0.25 }}
                   >
                     <ListItemText primary={entry.label} />
                     <ChevronRightIcon fontSize="small" color="action" />
@@ -348,7 +360,7 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
           )}
 
           <Divider />
-          <ListItemButton id="filter-clear" onClick={onClear} dense>
+          <ListItemButton id="filter-clear" onClick={onClear} dense sx={{ py: 0.25 }}>
             <Typography color="text.secondary" variant="body2">
               Clear filters
             </Typography>
