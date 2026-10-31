@@ -22,6 +22,11 @@ export function SearchBar({ value, onChange }: SearchBarProps) {
       aria-label="Search contacts"
       value={value}
       onChange={(event) => onChange(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          inputRef.current?.blur();
+        }
+      }}
       slotProps={{
         input: {
           endAdornment: value ? (
