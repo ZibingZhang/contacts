@@ -5,6 +5,11 @@ export interface FilterField {
   id: string;
   label: string;
   values: (contact: Contact) => string[];
+  // Excluded from the dropdown's top-level "search reaches into group
+  // fields" listing — shown only as the group's dedicated None row, so it
+  // doesn't appear as a duplicate, indistinguishable "None" entry alongside
+  // the other groups' None rows.
+  hidden?: boolean;
 }
 
 function nonEmpty(values: (string | undefined)[]): string[] {
@@ -58,15 +63,38 @@ const COUNTRY_FIELD: FilterField = {
   values: (contact) => nonEmpty((contact.street_addresses ?? []).map((address) => address.country)),
 };
 
+const ADDRESS_FIELDS: FilterField[] = [CITY_FIELD, STATE_FIELD, COUNTRY_FIELD];
+
+// A group-wide "None" field: matches contacts that have no value in any of
+// the group's fields (e.g. no education entries at all, rather than just no
+// bachelor's degree). Reuses the existing NONE_FILTER_VALUE sentinel — the
+// field reports ["Yes"] once any member field has a value, so selecting
+// NONE_FILTER_VALUE on it falls through to "no member field had a value".
+function groupNoneField(groupId: string, fields: FilterField[]): FilterField {
+  return {
+    id: `${groupId}:none`,
+    label: "None",
+    values: (contact) => (fields.some((field) => field.values(contact).length > 0) ? ["Yes"] : []),
+    hidden: true,
+  };
+}
+
+const EDUCATION_NONE_FIELD = groupNoneField("group:education", EDUCATION_FIELDS);
+const SOCIAL_NONE_FIELD = groupNoneField("group:social", SOCIAL_FIELDS);
+const ADDRESS_NONE_FIELD = groupNoneField("group:address", ADDRESS_FIELDS);
+
 // The flat field catalogue backing filter matching and value counting — every
 // leaf field, regardless of how the dropdown groups it for display.
 export const FILTER_FIELDS: FilterField[] = [
   TAG_FIELD,
   ...EDUCATION_FIELDS,
+  EDUCATION_NONE_FIELD,
   ...SOCIAL_FIELDS,
+  SOCIAL_NONE_FIELD,
   CITY_FIELD,
   STATE_FIELD,
   COUNTRY_FIELD,
+  ADDRESS_NONE_FIELD,
 ];
 
 export const FILTER_FIELDS_BY_ID = new Map(FILTER_FIELDS.map((field) => [field.id, field]));
@@ -75,6 +103,10 @@ export interface FilterFieldGroup {
   id: string;
   label: string;
   fields: FilterField[];
+  // Directly-toggleable "has none of this group's fields" filter, shown as
+  // a top sub-option above the group's fields rather than a field you drill
+  // into.
+  noneField: FilterField;
 }
 
 export type FilterMenuEntry = FilterField | FilterFieldGroup;
@@ -88,9 +120,9 @@ export function isFilterFieldGroup(entry: FilterMenuEntry): entry is FilterField
 // related fields don't clutter the top-level list.
 export const FILTER_MENU: FilterMenuEntry[] = [
   TAG_FIELD,
-  { id: "group:education", label: "Education", fields: EDUCATION_FIELDS },
-  { id: "group:social", label: "Social Profile", fields: SOCIAL_FIELDS },
-  { id: "group:address", label: "Address", fields: [CITY_FIELD, STATE_FIELD, COUNTRY_FIELD] },
+  { id: "group:education", label: "Education", fields: EDUCATION_FIELDS, noneField: EDUCATION_NONE_FIELD },
+  { id: "group:social", label: "Social Profile", fields: SOCIAL_FIELDS, noneField: SOCIAL_NONE_FIELD },
+  { id: "group:address", label: "Address", fields: ADDRESS_FIELDS, noneField: ADDRESS_NONE_FIELD },
 ];
 
 export interface SelectedFilter {

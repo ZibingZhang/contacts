@@ -4,6 +4,7 @@ import {
   FILTER_FIELDS,
   FILTER_FIELDS_BY_ID,
   FILTER_MENU,
+  NONE_FILTER_VALUE,
   countAllFilterValues,
   isFilterFieldGroup,
   isNoneFilterValue,
@@ -35,6 +36,13 @@ import SortByAlphaIcon from "@mui/icons-material/SortByAlpha";
 function filterValueLabel(value: string): string {
   return isNoneFilterValue(value) ? "(None)" : value;
 }
+
+// Maps each group's "None" field id to that group's label, so a selected
+// group-none filter can read as "None" / "Education" rather than the
+// confusing default of "(None)" / "None" (the none-field's own label).
+const GROUP_LABEL_BY_NONE_FIELD_ID = new Map(
+  FILTER_MENU.filter(isFilterFieldGroup).map((group) => [group.noneField.id, group.label]),
+);
 
 interface FilterDropdownProps {
   contacts: Contact[];
@@ -159,7 +167,7 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
   // straight to the field entry; otherwise show the top-level menu as-is.
   const visibleMenuEntries =
     query && !activeGroup
-      ? FILTER_FIELDS.filter((field) => field.label.toLowerCase().includes(query))
+      ? FILTER_FIELDS.filter((field) => !field.hidden && field.label.toLowerCase().includes(query))
       : !activeGroup
         ? FILTER_MENU
         : [];
@@ -169,10 +177,18 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
       ? activeGroup.fields.filter((field) => field.label.toLowerCase().includes(query))
       : activeGroup?.fields ?? [];
 
+  // The group's "None" sub-option participates in the same search as its
+  // fields, so typing "none" surfaces it and typing anything else hides it
+  // if it doesn't match.
+  const showGroupNoneOption = Boolean(activeGroup) && (!query || "none".includes(query));
+
   // Computed once per `contacts` change for every field at once, so opening
   // a field's value picker is a plain map lookup — no scan over `contacts`
   // happens on click.
   const valuesByField = useMemo(() => countAllFilterValues(contacts), [contacts]);
+  const groupNoneCount = activeGroup
+    ? valuesByField.get(activeGroup.noneField.id)?.find(({ value }) => isNoneFilterValue(value))?.count ?? 0
+    : 0;
   const fieldValues = activeField ? valuesByField.get(activeField.id) ?? [] : [];
   const matchingValues = query
     ? fieldValues.filter(({ value }) => filterValueLabel(value).toLowerCase().includes(query))
@@ -253,8 +269,8 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
                       <Checkbox edge="start" checked size="small" disableRipple tabIndex={-1} />
                     </ListItemIcon>
                     <ListItemText
-                      primary={filterValueLabel(filter.value)}
-                      secondary={FILTER_FIELDS_BY_ID.get(filter.field)?.label}
+                      primary={GROUP_LABEL_BY_NONE_FIELD_ID.has(filter.field) ? "None" : filterValueLabel(filter.value)}
+                      secondary={GROUP_LABEL_BY_NONE_FIELD_ID.get(filter.field) ?? FILTER_FIELDS_BY_ID.get(filter.field)?.label}
                     />
                   </ListItemButton>
                 ))}
@@ -274,6 +290,29 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
             />
           ) : activeGroup ? (
             <List id="filter-group-fields" dense disablePadding sx={{ maxHeight: 280, overflowY: "auto" }}>
+              {showGroupNoneOption && (
+                <>
+                  <ListItemButton
+                    onClick={() => onToggleFilter({ field: activeGroup.noneField.id, value: NONE_FILTER_VALUE })}
+                    dense
+                  >
+                    <ListItemIcon sx={{ minWidth: 0, mr: 1 }}>
+                      <Checkbox
+                        edge="start"
+                        checked={selectedFilters.some((selected) =>
+                          sameFilter(selected, { field: activeGroup.noneField.id, value: NONE_FILTER_VALUE }),
+                        )}
+                        size="small"
+                        disableRipple
+                        tabIndex={-1}
+                      />
+                    </ListItemIcon>
+                    <ListItemText primary="None" />
+                    <Chip label={groupNoneCount} size="small" variant="outlined" />
+                  </ListItemButton>
+                  <Divider />
+                </>
+              )}
               {visibleGroupFields.length === 0 ? (
                 <Typography color="text.secondary" variant="body2" sx={{ px: 2, py: 1 }}>
                   No matching fields
