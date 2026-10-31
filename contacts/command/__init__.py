@@ -6,7 +6,6 @@ from contacts.command import (
     add,
     birthday,
     families,
-    migrate_contacts_to_sqlite,
     pull,
     push,
     serve,
@@ -24,7 +23,6 @@ class Command(enum.StrEnum):
     ADD = "add"
     BIRTHDAY = "birthday"
     FAMILIES = "families"
-    MIGRATE_CONTACTS_TO_SQLITE = "migrate-contacts-to-sqlite"
     PULL = "pull"
     PUSH = "push"
     SERVE = "serve"
