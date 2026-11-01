@@ -27,6 +27,7 @@ import { GroupDetail } from "./components/GroupDetail";
 import { GroupForm } from "./components/GroupForm";
 import { TopBar, type AppView } from "./components/TopBar";
 import { ContactDetail } from "./components/ContactDetail";
+import { BirthdayView } from "./components/BirthdayView";
 import { BatchTagModal } from "./components/BatchTagModal";
 import { ContactForm } from "./components/ContactForm";
 import { SyncVerificationModal } from "./components/SyncVerificationModal";
@@ -67,7 +68,8 @@ function paramsFromLocation(): {
   const contactId = contactParam !== null && /^\d+$/.test(contactParam) ? Number(contactParam) : null;
   const groupParam = params.get("group");
   const groupId = groupParam !== null && /^\d+$/.test(groupParam) ? Number(groupParam) : null;
-  const view: AppView = params.get("view") === "groups" ? "groups" : "contacts";
+  const viewParam = params.get("view");
+  const view: AppView = viewParam === "groups" || viewParam === "birthdays" ? viewParam : "contacts";
   return {
     query: params.get("q") ?? "",
     filters,
@@ -215,8 +217,8 @@ export function App() {
     } else {
       params.delete("group");
     }
-    if (view === "groups") {
-      params.set("view", "groups");
+    if (view === "groups" || view === "birthdays") {
+      params.set("view", view);
     } else {
       params.delete("view");
     }
@@ -538,8 +540,8 @@ export function App() {
     }
   }
 
-  function handleToggleView() {
-    setView((prev) => (prev === "contacts" ? "groups" : "contacts"));
+  function handleSelectView(nextView: AppView) {
+    setView(nextView);
   }
 
   function handleNewGroup() {
@@ -562,6 +564,15 @@ export function App() {
     setCopySourceContact(null);
     setSelectedContactId(id);
   }, []);
+
+  // Jumps from the birthdays calendar straight to a contact's detail view.
+  const handleSelectContactFromBirthdays = useCallback(
+    (id: number) => {
+      setView("contacts");
+      handleSelectContact(id);
+    },
+    [handleSelectContact]
+  );
 
   function handleCopyContact(contact: Contact) {
     setCopySourceContact(contact);
@@ -595,7 +606,7 @@ export function App() {
     <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <TopBar
         view={view}
-        onToggleView={handleToggleView}
+        onSelectView={handleSelectView}
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebarCollapsed={() => setSidebarCollapsed((prev) => !prev)}
         onNewContact={() => {
@@ -689,6 +700,8 @@ export function App() {
             )}
           </Box>
         </Box>
+      ) : view === "birthdays" ? (
+        <BirthdayView contacts={contacts} onSelectContact={handleSelectContactFromBirthdays} />
       ) : (
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
           {!sidebarCollapsed && (

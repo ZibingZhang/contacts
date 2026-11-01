@@ -19,6 +19,7 @@ import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import GroupsIcon from "@mui/icons-material/Groups";
+import CakeIcon from "@mui/icons-material/Cake";
 import PaletteIcon from "@mui/icons-material/Palette";
 import CheckIcon from "@mui/icons-material/Check";
 
@@ -85,11 +86,11 @@ function AppearanceMenu() {
   );
 }
 
-export type AppView = "contacts" | "groups";
+export type AppView = "contacts" | "groups" | "birthdays";
 
 interface TopBarProps {
   view: AppView;
-  onToggleView: () => void;
+  onSelectView: (view: AppView) => void;
   sidebarCollapsed: boolean;
   onToggleSidebarCollapsed: () => void;
   onNewContact: () => void;
@@ -110,7 +111,7 @@ interface TopBarProps {
 
 export function TopBar({
   view,
-  onToggleView,
+  onSelectView,
   sidebarCollapsed,
   onToggleSidebarCollapsed,
   onNewContact,
@@ -219,16 +220,28 @@ export function TopBar({
           </Tooltip>
         </>
       )}
-      <Tooltip title={isContactsView ? "Switch to Groups" : "Switch to Contacts"}>
+      <Tooltip title={view === "groups" ? "Switch to Contacts" : "Switch to Groups"}>
         <IconButton
           id="groups-view-toggle"
           size="small"
           aria-label="Toggle Groups view"
-          aria-pressed={!isContactsView}
-          color={isContactsView ? "default" : "primary"}
-          onClick={onToggleView}
+          aria-pressed={view === "groups"}
+          color={view === "groups" ? "primary" : "default"}
+          onClick={() => onSelectView(view === "groups" ? "contacts" : "groups")}
         >
           <GroupsIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title={view === "birthdays" ? "Switch to Contacts" : "View birthday calendar"}>
+        <IconButton
+          id="birthdays-view-toggle"
+          size="small"
+          aria-label="Toggle Birthdays view"
+          aria-pressed={view === "birthdays"}
+          color={view === "birthdays" ? "primary" : "default"}
+          onClick={() => onSelectView(view === "birthdays" ? "contacts" : "birthdays")}
+        >
+          <CakeIcon fontSize="small" />
         </IconButton>
       </Tooltip>
       <Tooltip title="Open admin console">
