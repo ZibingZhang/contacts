@@ -147,6 +147,68 @@ def update_contact(contact_id: int):
     return jsonify(contact.to_dict())
 
 
+@bp.get("/groups")
+def list_groups():
+    groups = service.list_groups()
+    return jsonify(
+        {
+            "groups": [group.to_dict() for group in groups],
+            "total": len(groups),
+        }
+    )
+
+
+@bp.post("/groups")
+def create_group():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise errors.ValidationError("Request body must be a JSON object")
+
+    data = {
+        k: v for k, v in body.items() if k not in ("id", "ids", "ctime", "mtime", "icloud")
+    }
+    group = service.create_group(data)
+    return jsonify(group.to_dict()), 201
+
+
+@bp.get("/groups/<int:group_id>")
+def get_group(group_id: int):
+    group = service.get_group(group_id)
+    if group is None:
+        raise errors.NotFoundError(f"Group {group_id} not found")
+    return jsonify(group.to_dict())
+
+
+@bp.put("/groups/<int:group_id>")
+def update_group(group_id: int):
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise errors.ValidationError("Request body must be a JSON object")
+
+    data = {
+        k: v for k, v in body.items() if k not in ("id", "ids", "ctime", "mtime", "icloud")
+    }
+    group = service.update_group(group_id, data)
+    return jsonify(group.to_dict())
+
+
+@bp.post("/groups/<int:group_id>/refresh")
+def refresh_group(group_id: int):
+    group = service.refresh_group(group_id)
+    return jsonify(group.to_dict())
+
+
+@bp.post("/groups/refresh")
+def refresh_groups():
+    groups = service.refresh_groups()
+    return jsonify(
+        {
+            "groups": [group.to_dict() for group in groups],
+            "total": len(groups),
+        }
+    )
+
+
 @bp.get("/tags")
 def list_tags():
     return jsonify({"tags": service.list_tags()})

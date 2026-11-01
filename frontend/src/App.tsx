@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchContacts,
   fetchTags,
+  fetchGroups,
+  refreshGroups,
   batchAddTags,
   startSync,
   submitSyncDevice,
@@ -14,12 +16,16 @@ import {
   apiBaseUrl,
   ApiError,
 } from "./api";
-import type { Contact, TagCount, SyncRequiresVerification, SyncReview, SyncResult } from "./types";
+import type { Contact, Group, TagCount, SyncRequiresVerification, SyncReview, SyncResult } from "./types";
 import { contactLetter } from "./search";
 import { sameFilter, type SelectedFilter } from "./filters";
 import { useDebouncedValue, useFilteredContactIds, isTypingTarget } from "./hooks";
 import { Sidebar, type ListStatus } from "./components/Sidebar";
-import { TopBar } from "./components/TopBar";
+import { GroupsNav } from "./components/GroupsNav";
+import { GroupList } from "./components/GroupList";
+import { GroupDetail } from "./components/GroupDetail";
+import { GroupForm } from "./components/GroupForm";
+import { TopBar, type AppView } from "./components/TopBar";
 import { ContactDetail } from "./components/ContactDetail";
 import { BatchTagModal } from "./components/BatchTagModal";
 import { ContactForm } from "./components/ContactForm";
@@ -43,7 +49,13 @@ function readStoredSidebarCollapsed(): boolean {
   return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
 }
 
-function paramsFromLocation(): { query: string; filters: SelectedFilter[]; contactId: number | null } {
+function paramsFromLocation(): {
+  query: string;
+  filters: SelectedFilter[];
+  contactId: number | null;
+  groupId: number | null;
+  view: AppView;
+} {
   const params = new URLSearchParams(window.location.search);
   const filters: SelectedFilter[] = [];
   for (const raw of params.getAll("filter")) {
@@ -53,10 +65,15 @@ function paramsFromLocation(): { query: string; filters: SelectedFilter[]; conta
   }
   const contactParam = params.get("contact");
   const contactId = contactParam !== null && /^\d+$/.test(contactParam) ? Number(contactParam) : null;
+  const groupParam = params.get("group");
+  const groupId = groupParam !== null && /^\d+$/.test(groupParam) ? Number(groupParam) : null;
+  const view: AppView = params.get("view") === "groups" ? "groups" : "contacts";
   return {
     query: params.get("q") ?? "",
     filters,
+    view,
     contactId,
+    groupId,
   };
 }
 
@@ -75,6 +92,11 @@ const SYNC_API: Record<SyncDirection, SyncApi> = {
 export function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupsRefreshing, setGroupsRefreshing] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => paramsFromLocation().groupId);
+  const [editingGroupId, setEditingGroupId] = useState<number | "new" | null>(null);
+  const [view, setView] = useState<AppView>(() => paramsFromLocation().view);
   const [selectedFilters, setSelectedFilters] = useState<SelectedFilter[]>(() => paramsFromLocation().filters);
   const [searchQuery, setSearchQuery] = useState(() => paramsFromLocation().query);
   const [selectedContactId, setSelectedContactId] = useState<number | null>(() => paramsFromLocation().contactId);
@@ -106,6 +128,12 @@ export function App() {
   // changed while on the same contact" (replace, so typing doesn't spam
   // history).
   const syncedContactIdRef = useRef<number | null>(selectedContactId);
+  // Same idea as syncedContactIdRef, but for the selected group -- switching
+  // which group scopes/is shown pushes a history entry (like switching a
+  // mailbox folder), so back/forward moves between groups too.
+  const syncedGroupIdRef = useRef<number | null>(selectedGroupId);
+  // ...and for the top-level contacts/groups view itself.
+  const syncedViewRef = useRef<AppView>(view);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +169,32 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    fetchGroups()
+      .then((data) => {
+        if (!cancelled) setGroups(data.groups);
+      })
+      .catch(() => {
+        if (!cancelled) setGroups([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleRefreshGroups() {
+    setGroupsRefreshing(true);
+    try {
+      const data = await refreshGroups();
+      setGroups(data.groups);
+    } catch {
+      // Keep the existing group list if the refresh fails.
+    } finally {
+      setGroupsRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (searchQuery) {
       params.set("q", searchQuery);
@@ -156,37 +210,71 @@ export function App() {
     } else {
       params.delete("contact");
     }
+    if (selectedGroupId !== null) {
+      params.set("group", String(selectedGroupId));
+    } else {
+      params.delete("group");
+    }
+    if (view === "groups") {
+      params.set("view", "groups");
+    } else {
+      params.delete("view");
+    }
     const queryString = params.toString();
     const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ""}${window.location.hash}`;
-    if (selectedContactId !== syncedContactIdRef.current) {
+    if (
+      selectedContactId !== syncedContactIdRef.current ||
+      selectedGroupId !== syncedGroupIdRef.current ||
+      view !== syncedViewRef.current
+    ) {
       window.history.pushState(null, "", newUrl);
     } else {
       window.history.replaceState(null, "", newUrl);
     }
     syncedContactIdRef.current = selectedContactId;
-  }, [searchQuery, selectedFilters, selectedContactId]);
+    syncedGroupIdRef.current = selectedGroupId;
+    syncedViewRef.current = view;
+  }, [searchQuery, selectedFilters, selectedContactId, selectedGroupId, view]);
 
   // Restores search/filter/selection state when the user navigates with the
   // browser's back/forward buttons.
   useEffect(() => {
     function handlePopState() {
-      const { query, filters, contactId } = paramsFromLocation();
+      const { query, filters, contactId, groupId, view: poppedView } = paramsFromLocation();
       syncedContactIdRef.current = contactId;
+      syncedGroupIdRef.current = groupId;
+      syncedViewRef.current = poppedView;
       setSearchQuery(query);
       setSelectedFilters(filters);
       setSelectedContactId(contactId);
+      setSelectedGroupId(groupId);
+      setView(poppedView);
       setEditingContactId(null);
       setCopySourceContact(null);
+      setEditingGroupId(null);
     }
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  // The current "view" -- all contacts, or just the ones in the selected
+  // group's cached `ids` -- that search/filters/the alpha index all then
+  // narrow further. A missing/deleted group falls back to all contacts
+  // rather than showing an empty list.
+  const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
+  const scopedContacts = useMemo(() => {
+    if (selectedGroup === null) {
+      return contacts;
+    }
+    const idSet = new Set(selectedGroup.ids ?? []);
+    return contacts.filter((contact) => idSet.has(contact.id));
+  }, [contacts, selectedGroup]);
+
   // Debounced so fast typing doesn't kick off a filter pass per keystroke;
   // the actual filtering then runs in a Web Worker, off the main thread.
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 100);
   const { ids: visibleContactIds, query: appliedSearchQuery } = useFilteredContactIds(
-    contacts,
+    scopedContacts,
     debouncedSearchQuery,
     selectedFilters
   );
@@ -317,6 +405,20 @@ export function App() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [visibleContacts, selectedContactId, editingContactId]);
 
+  // Switching views (like switching a mailbox folder) resets the search/
+  // filter/selection state scoped to the previous view, rather than
+  // carrying it over into the new one.
+  function handleSelectGroup(groupId: number | null) {
+    setSelectedGroupId(groupId);
+    setSearchQuery("");
+    setSelectedFilters([]);
+    setSelectedContactId(null);
+    setEditingContactId(null);
+    setCopySourceContact(null);
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }
+
   function toggleFilter(filter: SelectedFilter) {
     setSelectedFilters((prev) =>
       prev.some((selected) => sameFilter(selected, filter))
@@ -436,6 +538,23 @@ export function App() {
     }
   }
 
+  function handleToggleView() {
+    setView((prev) => (prev === "contacts" ? "groups" : "contacts"));
+  }
+
+  function handleNewGroup() {
+    setEditingGroupId("new");
+  }
+
+  function handleGroupSaved(group: Group) {
+    setGroups((prev) => {
+      const exists = prev.some((g) => g.id === group.id);
+      return exists ? prev.map((g) => (g.id === group.id ? group : g)) : [...prev, group];
+    });
+    setSelectedGroupId(group.id);
+    setEditingGroupId(null);
+  }
+
   // Stable identity so it doesn't defeat ContactList's memoization on every
   // keystroke in the search box.
   const handleSelectContact = useCallback((id: number) => {
@@ -475,12 +594,15 @@ export function App() {
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <TopBar
+        view={view}
+        onToggleView={handleToggleView}
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebarCollapsed={() => setSidebarCollapsed((prev) => !prev)}
         onNewContact={() => {
           setCopySourceContact(null);
           setEditingContactId("new");
         }}
+        onNewGroup={handleNewGroup}
         selectionMode={selectionMode}
         onToggleSelectionMode={toggleSelectionMode}
         selectedCount={selectedIds.size}
@@ -495,67 +617,115 @@ export function App() {
         onOpenAdminConsole={() => setShowAdminConsole(true)}
       />
 
-      <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
-        {!sidebarCollapsed && (
-          <Sidebar
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            allContacts={contacts}
-            selectedFilters={selectedFilters}
-            onToggleFilter={toggleFilter}
-            onClearFilters={() => setSelectedFilters([])}
-            listStatus={listStatus}
-            loadError={loadError}
-            contacts={visibleContacts}
-            grouped={grouped}
-            selectedContactId={selectedContactId}
-            onSelectContact={handleSelectContact}
-            lettersPresent={lettersPresent}
-            onJumpToLetter={jumpToLetter}
-            listRef={listRef}
-            scrollContainerRef={scrollContainerRef}
-            selectionMode={selectionMode}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleContactSelection}
-            syncMessage={syncMessage}
-            syncError={syncError}
-            onDismissSyncStatus={() => {
-              setSyncMessage(null);
-              setSyncError(null);
-            }}
-          />
-        )}
-
-        <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
-          {editingContactId !== null ? (
-            <ContactForm
-              key={editingContactId}
-              contact={editingContactId === "new" ? null : contacts.find((c) => c.id === editingContactId) ?? null}
-              prefillFrom={editingContactId === "new" ? copySourceContact : null}
-              allTags={tags}
-              onCancel={() => {
-                setEditingContactId(null);
-                setCopySourceContact(null);
-              }}
-              onSaved={handleContactSaved}
+      {view === "contacts" ? (
+        <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
+          {!sidebarCollapsed && (
+            <GroupsNav
+              groups={groups}
+              selectedGroupId={selectedGroupId}
+              onSelectGroup={handleSelectGroup}
+              totalContactCount={contacts.length}
+              refreshing={groupsRefreshing}
+              onRefresh={handleRefreshGroups}
             />
-          ) : (
-            <Box sx={{ pt: 4 }}>
-              {selectedContact ? (
-                <ContactDetail
-                  contact={selectedContact}
-                  onEdit={() => setEditingContactId(selectedContact.id)}
-                  onCopy={() => handleCopyContact(selectedContact)}
-                />
-              ) : selectedContactId !== null ? (
-                <Alert severity="error">Contact not found.</Alert>
-              ) : (
-                <Typography color="text.secondary">Select a contact to see their details.</Typography>
-              )}
-            </Box>
           )}
+          {!sidebarCollapsed && (
+            <Sidebar
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              allContacts={scopedContacts}
+              selectedFilters={selectedFilters}
+              onToggleFilter={toggleFilter}
+              onClearFilters={() => setSelectedFilters([])}
+              listStatus={listStatus}
+              loadError={loadError}
+              contacts={visibleContacts}
+              grouped={grouped}
+              selectedContactId={selectedContactId}
+              onSelectContact={handleSelectContact}
+              lettersPresent={lettersPresent}
+              onJumpToLetter={jumpToLetter}
+              listRef={listRef}
+              scrollContainerRef={scrollContainerRef}
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleContactSelection}
+              syncMessage={syncMessage}
+              syncError={syncError}
+              onDismissSyncStatus={() => {
+                setSyncMessage(null);
+                setSyncError(null);
+              }}
+            />
+          )}
+
+          <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
+            {editingContactId !== null ? (
+              <ContactForm
+                key={editingContactId}
+                contact={editingContactId === "new" ? null : contacts.find((c) => c.id === editingContactId) ?? null}
+                prefillFrom={editingContactId === "new" ? copySourceContact : null}
+                allTags={tags}
+                onCancel={() => {
+                  setEditingContactId(null);
+                  setCopySourceContact(null);
+                }}
+                onSaved={handleContactSaved}
+              />
+            ) : (
+              <Box sx={{ pt: 4 }}>
+                {selectedContact ? (
+                  <ContactDetail
+                    contact={selectedContact}
+                    onEdit={() => setEditingContactId(selectedContact.id)}
+                    onCopy={() => handleCopyContact(selectedContact)}
+                  />
+                ) : selectedContactId !== null ? (
+                  <Alert severity="error">Contact not found.</Alert>
+                ) : (
+                  <Typography color="text.secondary">Select a contact to see their details.</Typography>
+                )}
+              </Box>
+            )}
+          </Box>
         </Box>
-      </Box>
+      ) : (
+        <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
+          {!sidebarCollapsed && (
+            <GroupList
+              groups={groups}
+              selectedGroupId={selectedGroupId}
+              onSelectGroup={(groupId) => {
+                setSelectedGroupId(groupId);
+                setEditingGroupId(null);
+              }}
+              refreshing={groupsRefreshing}
+              onRefresh={handleRefreshGroups}
+            />
+          )}
+
+          <Box component="main" id="group-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
+            {editingGroupId !== null ? (
+              <GroupForm
+                key={editingGroupId}
+                group={editingGroupId === "new" ? null : groups.find((g) => g.id === editingGroupId) ?? null}
+                onCancel={() => setEditingGroupId(null)}
+                onSaved={handleGroupSaved}
+              />
+            ) : (
+              <Box sx={{ pt: 4 }}>
+                {selectedGroup ? (
+                  <GroupDetail group={selectedGroup} onEdit={() => setEditingGroupId(selectedGroup.id)} />
+                ) : selectedGroupId !== null ? (
+                  <Alert severity="error">Group not found.</Alert>
+                ) : (
+                  <Typography color="text.secondary">Select a group to see its details.</Typography>
+                )}
+              </Box>
+            )}
+          </Box>
+        </Box>
+      )}
 
       {showBatchTagModal && (
         <BatchTagModal

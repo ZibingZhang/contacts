@@ -35,6 +35,16 @@ class DiskDao:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS "group" (
+                    id INTEGER PRIMARY KEY,
+                    ctime REAL NOT NULL,
+                    mtime REAL,
+                    data TEXT NOT NULL
+                )
+                """
+            )
 
     @staticmethod
     def _connect() -> sqlite3.Connection:
@@ -133,3 +143,74 @@ class DiskDao:
                         contact.to_json(),
                     ),
                 )
+
+    @staticmethod
+    def read_groups() -> list[model.DiskGroup]:
+        LOG.info("Reading groups from disk")
+
+        with contextlib.closing(DiskDao._connect()) as connection, connection:
+            rows = connection.execute('SELECT data FROM "group"').fetchall()
+
+        groups = [model.DiskGroup.from_json(row[0]) for row in rows]
+
+        LOG.info(f"Read {len(groups)} groups")
+
+        return sorted(groups, key=lambda group: group.id)
+
+    @staticmethod
+    def create_groups(groups: list[model.Group]) -> None:
+        with contextlib.closing(DiskDao._connect()) as connection, connection:
+            next_group_id = (
+                connection.execute(
+                    'SELECT COALESCE(MAX(id), 0) FROM "group"'
+                ).fetchone()[0]
+                + 1
+            )
+
+            for group in groups:
+                LOG.info(f"Writing new group {group.name} to disk")
+
+                group.id = next_group_id
+                group.ctime = time.time()
+                group.mtime = group.ctime
+                connection.execute(
+                    'INSERT INTO "group" (id, ctime, mtime, data) VALUES (?, ?, ?, ?)',
+                    (group.id, group.ctime, group.mtime, group.to_json()),
+                )
+                next_group_id += 1
+
+    @staticmethod
+    def update_groups(groups: list[model.DiskGroup]) -> None:
+        with contextlib.closing(DiskDao._connect()) as connection, connection:
+            for group in groups:
+                LOG.info(f"Writing updated group {group.name} to disk")
+
+                connection.execute(
+                    """
+                    INSERT INTO "group" (id, ctime, mtime, data)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET mtime = excluded.mtime, data = excluded.data
+                    """,
+                    (
+                        group.id,
+                        group.ctime if group.ctime is not None else 0,
+                        group.mtime,
+                        group.to_json(),
+                    ),
+                )
+
+    @staticmethod
+    def run_readonly_query(sql: str) -> list[tuple]:
+        """Runs a read-only SQL statement against data.db, e.g. to resolve a
+        group's `query` into the contact ids it currently matches.
+
+        Args:
+            sql: The SQL statement to run.
+
+        Returns:
+            The fetched rows.
+        """
+        with contextlib.closing(
+            sqlite3.connect(f"file:{DiskDao.PATH}?mode=ro", uri=True)
+        ) as connection:
+            return connection.execute(sql).fetchall()

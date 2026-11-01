@@ -29,4 +29,7 @@ Contact = contact.Contact
 DiskContact = contact.DiskContact
 
 Family = family.Family
+
+ICloudGroupMetadata = group.ICloudGroupMetadata
 Group = group.Group
+DiskGroup = group.DiskGroup

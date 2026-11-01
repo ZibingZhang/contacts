@@ -18,6 +18,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import TerminalIcon from "@mui/icons-material/Terminal";
+import GroupsIcon from "@mui/icons-material/Groups";
 import PaletteIcon from "@mui/icons-material/Palette";
 import CheckIcon from "@mui/icons-material/Check";
 
@@ -84,10 +85,15 @@ function AppearanceMenu() {
   );
 }
 
+export type AppView = "contacts" | "groups";
+
 interface TopBarProps {
+  view: AppView;
+  onToggleView: () => void;
   sidebarCollapsed: boolean;
   onToggleSidebarCollapsed: () => void;
   onNewContact: () => void;
+  onNewGroup: () => void;
   selectionMode: boolean;
   onToggleSelectionMode: () => void;
   selectedCount: number;
@@ -103,9 +109,12 @@ interface TopBarProps {
 }
 
 export function TopBar({
+  view,
+  onToggleView,
   sidebarCollapsed,
   onToggleSidebarCollapsed,
   onNewContact,
+  onNewGroup,
   selectionMode,
   onToggleSelectionMode,
   selectedCount,
@@ -119,6 +128,7 @@ export function TopBar({
   onPush,
   onOpenAdminConsole,
 }: TopBarProps) {
+  const isContactsView = view === "contacts";
   return (
     <Box
       id="top-bar"
@@ -146,21 +156,29 @@ export function TopBar({
 
       <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
 
-      <Button id="new-contact-button" size="small" variant="contained" onClick={onNewContact}>
-        New Contact
-      </Button>
-      <Button
-        id="selection-mode-toggle"
-        size="small"
-        variant={selectionMode ? "contained" : "outlined"}
-        color={selectionMode ? "secondary" : "inherit"}
-        aria-pressed={selectionMode}
-        onClick={onToggleSelectionMode}
-      >
-        {selectionMode ? "Done" : "Select"}
-      </Button>
+      {isContactsView ? (
+        <Button id="new-contact-button" size="small" variant="contained" onClick={onNewContact}>
+          New Contact
+        </Button>
+      ) : (
+        <Button id="new-group-button" size="small" variant="contained" onClick={onNewGroup}>
+          New Group
+        </Button>
+      )}
+      {isContactsView && (
+        <Button
+          id="selection-mode-toggle"
+          size="small"
+          variant={selectionMode ? "contained" : "outlined"}
+          color={selectionMode ? "secondary" : "inherit"}
+          aria-pressed={selectionMode}
+          onClick={onToggleSelectionMode}
+        >
+          {selectionMode ? "Done" : "Select"}
+        </Button>
+      )}
 
-      {selectionMode && (
+      {isContactsView && selectionMode && (
         <>
           <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
           <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
@@ -183,19 +201,35 @@ export function TopBar({
 
       <Box sx={{ flexGrow: 1 }} />
 
-      <Tooltip title="Pull new/changed contacts from iCloud to review here.">
-        <span>
-          <IconButton id="pull-button" size="small" aria-label="Pull from iCloud" disabled={syncing} onClick={onPull}>
-            {syncing && syncDirection === "pull" ? <CircularProgress size={18} /> : <CloudDownloadIcon fontSize="small" />}
-          </IconButton>
-        </span>
-      </Tooltip>
-      <Tooltip title="Push new/changed local contacts to iCloud to review there.">
-        <span>
-          <IconButton id="push-button" size="small" aria-label="Push to iCloud" disabled={syncing} onClick={onPush}>
-            {syncing && syncDirection === "push" ? <CircularProgress size={18} /> : <CloudUploadIcon fontSize="small" />}
-          </IconButton>
-        </span>
+      {isContactsView && (
+        <>
+          <Tooltip title="Pull new/changed contacts from iCloud to review here.">
+            <span>
+              <IconButton id="pull-button" size="small" aria-label="Pull from iCloud" disabled={syncing} onClick={onPull}>
+                {syncing && syncDirection === "pull" ? <CircularProgress size={18} /> : <CloudDownloadIcon fontSize="small" />}
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Push new/changed local contacts to iCloud to review there.">
+            <span>
+              <IconButton id="push-button" size="small" aria-label="Push to iCloud" disabled={syncing} onClick={onPush}>
+                {syncing && syncDirection === "push" ? <CircularProgress size={18} /> : <CloudUploadIcon fontSize="small" />}
+              </IconButton>
+            </span>
+          </Tooltip>
+        </>
+      )}
+      <Tooltip title={isContactsView ? "Switch to Groups" : "Switch to Contacts"}>
+        <IconButton
+          id="groups-view-toggle"
+          size="small"
+          aria-label="Toggle Groups view"
+          aria-pressed={!isContactsView}
+          color={isContactsView ? "default" : "primary"}
+          onClick={onToggleView}
+        >
+          <GroupsIcon fontSize="small" />
+        </IconButton>
       </Tooltip>
       <Tooltip title="Open admin console">
         <IconButton id="admin-console-button" size="small" aria-label="Open admin console" onClick={onOpenAdminConsole}>

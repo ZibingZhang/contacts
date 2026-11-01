@@ -66,22 +66,22 @@ def write_updated_contacts_to_icloud(
 
 
 @progress_utils.annotate("Creating iCloud group")
-def write_new_group_to_icloud(icloud_group: model.Group) -> None:
-    icloud_dao.create_group(icloud_group)
+def write_new_group_to_icloud(
+    group: model.Group, contacts: list[model.DiskContact]
+) -> None:
+    icloud_dao.create_group(group, contacts)
     progress_utils.message(
-        f"Created group {icloud_group.name} "
-        f"with {len(icloud_group.icloud.contact_uuids)} contact(s)"
+        f"Created group {group.name} with {len(group.ids or [])} contact(s)"
     )
 
 
 @progress_utils.annotate("Updating iCloud group")
 def write_updated_group_to_icloud(
-    icloud_group: model.Group,
+    group: model.Group, contacts: list[model.DiskContact]
 ) -> None:
-    icloud_dao.update_group(icloud_group)
+    icloud_dao.update_group(group, contacts)
     progress_utils.message(
-        f"Updated group {icloud_group.name} "
-        f"with {len(icloud_group.icloud.contact_uuids)} contact(s)"
+        f"Updated group {group.name} with {len(group.ids or [])} contact(s)"
     )
 
 

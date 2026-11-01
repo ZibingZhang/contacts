@@ -3,6 +3,8 @@ import type {
   Contact,
   ContactFieldOptions,
   ContactsResponse,
+  Group,
+  GroupsResponse,
   QueryResult,
   SyncResult,
   TagsResponse,
@@ -124,6 +126,22 @@ export function applyPushReview(createIcloudIds: string[], updateIcloudIds: stri
     create_icloud_ids: createIcloudIds,
     update_icloud_ids: updateIcloudIds,
   });
+}
+
+export function fetchGroups(): Promise<GroupsResponse> {
+  return apiGet<GroupsResponse>("/groups");
+}
+
+export function createGroup(payload: Record<string, unknown>): Promise<Group> {
+  return apiPost<Group>("/groups", payload);
+}
+
+export function updateGroup(groupId: number, payload: Record<string, unknown>): Promise<Group> {
+  return apiPut<Group>(`/groups/${groupId}`, payload);
+}
+
+export function refreshGroups(): Promise<GroupsResponse> {
+  return apiPost<GroupsResponse>("/groups/refresh", {});
 }
 
 export function runReadonlyQuery(sql: string): Promise<QueryResult> {

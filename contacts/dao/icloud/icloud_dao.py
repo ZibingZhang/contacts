@@ -29,6 +29,16 @@ _OTHER_UUIDS = [
 _IGNORED_UUIDS = _ALERT_UUIDS + _TEST_CONTACT_UUIDS + _OTHER_UUIDS
 
 
+def _contact_id_to_icloud_uuid_map(
+    contacts_: Sequence[contacts.model.Contact],
+) -> dict[int, str]:
+    return {
+        contact.id: contact.icloud.uuid
+        for contact in contacts_
+        if contact.id is not None and contact.icloud is not None
+    }
+
+
 @dataclasses.dataclass
 class AuthChallenge:
     """Describes a two-factor/two-step authentication challenge in progress.
@@ -261,13 +271,27 @@ class ICloudDao:
 
         LOG.info(f"Wrote {len(contacts)} updated contacts to iCloud")
 
-    def create_group(self, group: contacts.model.Group) -> None:
+    def create_group(
+        self,
+        group: contacts.model.Group,
+        contacts_: Sequence[contacts.model.Contact],
+    ) -> None:
         contact_manager = self._get_contact_manager()
-        contact_manager.create_group(transformer.group_to_icloud_group(group))
+        icloud_group = transformer.group_to_icloud_group(
+            group, _contact_id_to_icloud_uuid_map(contacts_)
+        )
+        contact_manager.create_group(icloud_group)
 
-    def update_group(self, group: contacts.model.Group) -> None:
+    def update_group(
+        self,
+        group: contacts.model.Group,
+        contacts_: Sequence[contacts.model.Contact],
+    ) -> None:
         contact_manager = self._get_contact_manager()
-        contact_manager.update_group(transformer.group_to_icloud_group(group))
+        icloud_group = transformer.group_to_icloud_group(
+            group, _contact_id_to_icloud_uuid_map(contacts_)
+        )
+        contact_manager.update_group(icloud_group)
 
     def _get_contact_manager(self) -> manager.ICloudContactManager:
         if self._contact_manager is None:

@@ -160,3 +160,24 @@ export interface QueryResult {
   rowcount: number;
   truncated: boolean;
 }
+
+export interface ICloudGroupMetadata {
+  uuid: string;
+  etag?: string;
+}
+
+export interface Group {
+  id: number;
+  name: string;
+  query: string;
+  ids?: number[];
+  sync: boolean;
+  ctime?: number;
+  mtime?: number;
+  icloud?: ICloudGroupMetadata;
+}
+
+export interface GroupsResponse {
+  groups: Group[];
+  total: number;
+}

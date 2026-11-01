@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+import sqlite3
 import time
 from typing import cast
 
@@ -197,6 +198,167 @@ def add_tags_to_contacts(
     invalidate_contacts_cache()
 
     return updated_contacts
+
+
+def list_groups() -> list[model.DiskGroup]:
+    """List all groups.
+
+    Returns:
+        All groups.
+    """
+    return disk_dao.read_groups()
+
+
+def get_group(group_id: int) -> model.DiskGroup | None:
+    """Get a single group by id.
+
+    Args:
+        group_id: The id of the group.
+
+    Returns:
+        The group, or None if no group with that id exists.
+    """
+    groups_by_id = {group.id: group for group in disk_dao.read_groups()}
+    return groups_by_id.get(group_id)
+
+
+def _run_group_query(query: str) -> list[int]:
+    """Runs a group's `query` and returns the contact ids it matches.
+
+    Args:
+        query: A SQL statement whose first result column is a contact id.
+
+    Returns:
+        The matching contact ids, in the order returned by the query.
+
+    Raises:
+        errors.ValidationError: If the query is invalid, or its first column
+            isn't a contact id.
+    """
+    try:
+        rows = disk_dao.run_readonly_query(query)
+    except sqlite3.Error as e:
+        raise errors.ValidationError(f"Invalid group query: {e}") from e
+
+    try:
+        return [int(row[0]) for row in rows]
+    except (IndexError, TypeError, ValueError) as e:
+        raise errors.ValidationError(
+            f"Group query must return a contact id as its first column: {e}"
+        ) from e
+
+
+def create_group(data: dict) -> model.DiskGroup:
+    """Creates a new group from user-provided field data.
+
+    Runs the group's `query` immediately to populate its initial `ids`.
+
+    Args:
+        data: Group field data matching model.Group's JSON shape (no "id",
+            "ids", "ctime", "mtime", or "icloud" -- those are assigned here).
+
+    Returns:
+        The newly created group, with its assigned id and ids.
+
+    Raises:
+        errors.ValidationError: If the data doesn't match the group schema,
+            or its query is invalid.
+    """
+    try:
+        group = model.Group.from_dict(data)
+    except Exception as e:
+        raise errors.ValidationError(f"Invalid group data: {e}") from e
+
+    group.ids = _run_group_query(group.query)
+
+    new_group = cast(model.DiskGroup, group)
+    disk_dao.create_groups([new_group])
+
+    return new_group
+
+
+def update_group(group_id: int, data: dict) -> model.DiskGroup:
+    """Overwrites a group's field data, preserving its id and iCloud link.
+
+    Re-runs the (possibly changed) `query` to refresh `ids`.
+
+    Args:
+        group_id: The id of the group to update.
+        data: Group field data matching model.Group's JSON shape (no "id",
+            "ids", "ctime", "mtime", or "icloud" -- those are preserved/
+            assigned here).
+
+    Returns:
+        The updated group.
+
+    Raises:
+        errors.NotFoundError: If no group with that id exists.
+        errors.ValidationError: If the data doesn't match the group schema,
+            or its query is invalid.
+    """
+    existing_group = get_group(group_id)
+    if existing_group is None:
+        raise errors.NotFoundError(f"Group {group_id} not found")
+
+    try:
+        group = model.Group.from_dict(data)
+    except Exception as e:
+        raise errors.ValidationError(f"Invalid group data: {e}") from e
+
+    group.id = group_id
+    group.ctime = existing_group.ctime
+    group.mtime = time.time()
+    group.icloud = existing_group.icloud
+    group.ids = _run_group_query(group.query)
+
+    updated_group = cast(model.DiskGroup, group)
+    disk_dao.update_groups([updated_group])
+
+    return updated_group
+
+
+def refresh_group(group_id: int) -> model.DiskGroup:
+    """Re-runs a group's query, updating its cached `ids` only if membership
+    actually changed.
+
+    Unlike `update_group`, this doesn't touch any other field, and leaves
+    `mtime` untouched when the query's result set hasn't changed -- meant to
+    be called periodically (e.g. by `sync_groups`) without bumping `mtime` on
+    every call.
+
+    Args:
+        group_id: The id of the group to refresh.
+
+    Returns:
+        The group, with `ids` refreshed if membership changed.
+
+    Raises:
+        errors.NotFoundError: If no group with that id exists.
+        errors.ValidationError: If the group's query is invalid.
+    """
+    group = get_group(group_id)
+    if group is None:
+        raise errors.NotFoundError(f"Group {group_id} not found")
+
+    new_ids = _run_group_query(group.query)
+    if set(new_ids) == set(group.ids or []):
+        return group
+
+    group.ids = new_ids
+    group.mtime = time.time()
+    disk_dao.update_groups([group])
+
+    return group
+
+
+def refresh_groups() -> list[model.DiskGroup]:
+    """Re-runs every group's query, refreshing `ids` for any whose
+    membership changed.
+
+    Returns:
+        All groups, post-refresh.
+    """
+    return [refresh_group(group.id) for group in list_groups()]
 
 
 def _begin_icloud_auth() -> dict | None:
