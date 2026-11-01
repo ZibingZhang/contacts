@@ -1,6 +1,6 @@
 """Backing logic for the admin SQL console.
 
-A deliberate escape hatch for running arbitrary SQL against data/contacts.db,
+A deliberate escape hatch for running arbitrary SQL against data/data.db,
 separate from the structured Contact CRUD API in service.py. Read-only mode is
 enforced by SQLite itself (opening the connection in `mode=ro`), not by
 inspecting the SQL text, so it can't be bypassed by unusual statement wording.

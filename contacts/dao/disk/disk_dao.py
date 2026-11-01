@@ -20,11 +20,14 @@ class DiskDao:
         if not os.path.exists(constant.DATA_DIRECTORY):
             os.makedirs(constant.DATA_DIRECTORY)
 
+        DiskDao._migrate_file()
+
         with contextlib.closing(DiskDao._connect()) as connection, connection:
             connection.execute("PRAGMA journal_mode=WAL")
+            DiskDao._migrate_table(connection)
             connection.execute(
                 """
-                CREATE TABLE IF NOT EXISTS contacts (
+                CREATE TABLE IF NOT EXISTS contact (
                     id INTEGER PRIMARY KEY,
                     ctime REAL NOT NULL,
                     mtime REAL,
@@ -38,11 +41,37 @@ class DiskDao:
         return sqlite3.connect(DiskDao.PATH)
 
     @staticmethod
+    def _migrate_file() -> None:
+        old_path = os.path.join(os.path.dirname(DiskDao.PATH), "contacts.db")
+        if old_path == DiskDao.PATH or not os.path.exists(old_path):
+            return
+        if os.path.exists(DiskDao.PATH):
+            return
+
+        LOG.info(f"Migrating {old_path} to {DiskDao.PATH}")
+        os.rename(old_path, DiskDao.PATH)
+        for suffix in ("-wal", "-shm"):
+            if os.path.exists(old_path + suffix):
+                os.rename(old_path + suffix, DiskDao.PATH + suffix)
+
+    @staticmethod
+    def _migrate_table(connection: sqlite3.Connection) -> None:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        if "contacts" in tables and "contact" not in tables:
+            LOG.info("Migrating table contacts to contact")
+            connection.execute("ALTER TABLE contacts RENAME TO contact")
+
+    @staticmethod
     def read_contacts() -> list[model.DiskContact]:
         LOG.info("Reading contacts from disk")
 
         with contextlib.closing(DiskDao._connect()) as connection, connection:
-            rows = connection.execute("SELECT data FROM contacts").fetchall()
+            rows = connection.execute("SELECT data FROM contact").fetchall()
 
         contacts = [model.DiskContact.from_json(row[0]) for row in rows]
 
@@ -64,7 +93,7 @@ class DiskDao:
         with contextlib.closing(DiskDao._connect()) as connection, connection:
             next_contact_id = (
                 connection.execute(
-                    "SELECT COALESCE(MAX(id), 0) FROM contacts"
+                    "SELECT COALESCE(MAX(id), 0) FROM contact"
                 ).fetchone()[0]
                 + 1
             )
@@ -78,7 +107,7 @@ class DiskDao:
                 contact.ctime = time.time()
                 contact.mtime = contact.ctime
                 connection.execute(
-                    "INSERT INTO contacts (id, ctime, mtime, data) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO contact (id, ctime, mtime, data) VALUES (?, ?, ?, ?)",
                     (contact.id, contact.ctime, contact.mtime, contact.to_json()),
                 )
                 next_contact_id += 1
@@ -93,7 +122,7 @@ class DiskDao:
 
                 connection.execute(
                     """
-                    INSERT INTO contacts (id, ctime, mtime, data)
+                    INSERT INTO contact (id, ctime, mtime, data)
                     VALUES (?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET mtime = excluded.mtime, data = excluded.data
                     """,

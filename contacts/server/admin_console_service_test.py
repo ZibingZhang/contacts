@@ -29,7 +29,7 @@ def test_run_readonly_query_returns_rows_and_columns() -> None:
 def test_run_readonly_query_rejects_writes() -> None:
     with pytest.raises(errors.ValidationError):
         admin_console_service.run_readonly_query(
-            "INSERT INTO contacts (id, ctime, mtime, data) VALUES (1, 0, 0, '{}')"
+            "INSERT INTO contact (id, ctime, mtime, data) VALUES (1, 0, 0, '{}')"
         )
 
 
@@ -40,10 +40,10 @@ def test_run_readonly_query_rejects_multiple_statements() -> None:
 
 def test_run_query_writes_and_persists() -> None:
     admin_console_service.run_query(
-        "INSERT INTO contacts (id, ctime, mtime, data) VALUES (1, 0, 0, '{}')"
+        "INSERT INTO contact (id, ctime, mtime, data) VALUES (1, 0, 0, '{}')"
     )
 
-    result = admin_console_service.run_readonly_query("SELECT id FROM contacts")
+    result = admin_console_service.run_readonly_query("SELECT id FROM contact")
 
     assert result["rows"] == [[1]]
 
@@ -51,11 +51,11 @@ def test_run_query_writes_and_persists() -> None:
 def test_run_query_rejects_multiple_statements() -> None:
     with pytest.raises(errors.ValidationError):
         admin_console_service.run_query(
-            "INSERT INTO contacts (id, ctime, mtime, data) VALUES (1, 0, 0, '{}'); "
-            "INSERT INTO contacts (id, ctime, mtime, data) VALUES (2, 0, 0, '{}')"
+            "INSERT INTO contact (id, ctime, mtime, data) VALUES (1, 0, 0, '{}'); "
+            "INSERT INTO contact (id, ctime, mtime, data) VALUES (2, 0, 0, '{}')"
         )
 
-    result = admin_console_service.run_readonly_query("SELECT COUNT(*) FROM contacts")
+    result = admin_console_service.run_readonly_query("SELECT COUNT(*) FROM contact")
     assert result["rows"] == [[0]]
 
 
@@ -67,7 +67,7 @@ def test_run_query_invalidates_contacts_cache(monkeypatch) -> None:
     monkeypatch.setattr(service, "invalidate_contacts_cache", lambda: invalidated.append(True))
 
     admin_console_service.run_query(
-        "INSERT INTO contacts (id, ctime, mtime, data) VALUES (1, 0, 0, '{}')"
+        "INSERT INTO contact (id, ctime, mtime, data) VALUES (1, 0, 0, '{}')"
     )
 
     assert invalidated == [True]
@@ -76,11 +76,11 @@ def test_run_query_invalidates_contacts_cache(monkeypatch) -> None:
 def test_run_readonly_query_truncates_at_500_rows() -> None:
     with sqlite3.connect(DiskDao.PATH) as connection:
         connection.executemany(
-            "INSERT INTO contacts (id, ctime, mtime, data) VALUES (?, 0, 0, '{}')",
+            "INSERT INTO contact (id, ctime, mtime, data) VALUES (?, 0, 0, '{}')",
             [(i,) for i in range(501)],
         )
 
-    result = admin_console_service.run_readonly_query("SELECT id FROM contacts")
+    result = admin_console_service.run_readonly_query("SELECT id FROM contact")
 
     assert len(result["rows"]) == 500
     assert result["truncated"] is True
