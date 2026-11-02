@@ -14,7 +14,7 @@ from contacts.server import errors, object_service, schema_service
 
 COMPANY_SCHEMA = {
     "name": "company",
-    "label": "Company",
+    "label": {"singular": "Company", "plural": "Companies"},
     "fields": [
         {"key": "name", "type": "text", "required": True},
         {"key": "domain", "type": "text"},

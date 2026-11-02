@@ -199,12 +199,18 @@ export function filterBySubsequence(options: string[], query: string): string[] 
   return scored.map((entry) => entry.option);
 }
 
+// The letter a piece of display text is grouped/indexed under. Falls back
+// to "#" for text that doesn't start with a letter.
+export function letterOf(text: string): string {
+  const ch = text.trim().charAt(0).toUpperCase();
+  return /[A-Z]/.test(ch) ? ch : "#";
+}
+
 // The letter a contact is grouped/indexed under, matching the field
 // `compareByName` sorts on first so that same-letter contacts stay
-// contiguous. Falls back to "#" for names that don't start with a letter.
+// contiguous.
 export function contactLetter(contact: Contact): string {
   const first = contact.name?.first_name ?? "";
   const last = contact.name?.last_name ?? "";
-  const ch = (first || last).trim().charAt(0).toUpperCase();
-  return /[A-Z]/.test(ch) ? ch : "#";
+  return letterOf(first || last);
 }

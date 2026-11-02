@@ -33,8 +33,8 @@ export function TypeNav({ currentTypeName, onSelectType }: TypeNavProps) {
         if (cancelled) return;
         setTypes(
           data.schemas
-            .filter((schema) => schema.name !== "schema" && schema.name !== "association")
-            .map((schema) => ({ name: schema.name, label: schema.label }))
+            .filter((schema) => schema.name !== "schema")
+            .map((schema) => ({ name: schema.name, label: schema.label.singular }))
         );
       })
       .catch(() => {

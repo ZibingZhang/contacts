@@ -171,6 +171,21 @@ export type FieldType =
   | "object"
   | "any";
 
+// Every FieldType value, for building a type picker -- kept in lockstep by
+// hand with the union above and with FIELD_TYPES in contacts/model/schema.py.
+export const FIELD_TYPES: FieldType[] = [
+  "text",
+  "long_text",
+  "integer",
+  "number",
+  "boolean",
+  "date",
+  "select",
+  "reference",
+  "object",
+  "any",
+];
+
 export interface OptionPair {
   value: string | number;
   label: string;
@@ -206,10 +221,15 @@ export interface SchemaField {
   readOnly?: boolean;
 }
 
+export interface SchemaLabel {
+  singular: string;
+  plural: string;
+}
+
 export interface SchemaObject {
   id: number;
   name: string;
-  label: string;
+  label: SchemaLabel;
   fields: SchemaField[];
   builtin?: boolean;
   // The key of the top-level field to use as an object's display title.

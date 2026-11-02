@@ -65,7 +65,7 @@ def _icloud_fields() -> list[Field]:
 
 CONTACT_SCHEMA = Schema(
     name=schema.TYPE_CONTACT,
-    label="Contact",
+    label={"singular": "Contact", "plural": "Contacts"},
     builtin=True,
     title_field="name",
     fields=[
@@ -298,7 +298,7 @@ CONTACT_SCHEMA = Schema(
 
 LIST_SCHEMA = Schema(
     name=schema.TYPE_LIST,
-    label="List",
+    label={"singular": "List", "plural": "Lists"},
     builtin=True,
     title_field="name",
     fields=[
@@ -324,7 +324,7 @@ LIST_SCHEMA = Schema(
 
 ASSOCIATION_SCHEMA = Schema(
     name=schema.TYPE_ASSOCIATION,
-    label="Association",
+    label={"singular": "Association", "plural": "Associations"},
     builtin=True,
     fields=[
         Field("object_type_1", "Object type 1", "text", required=True),

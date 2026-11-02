@@ -8,7 +8,7 @@ from contacts.model.schema import Field, Schema
 
 
 def build_schema(*fields: Field) -> Schema:
-    return Schema(name="widget", label="Widget", fields=list(fields))
+    return Schema(name="widget", label={"singular": "Widget", "plural": "Widgets"}, fields=list(fields))
 
 
 def test_validate_object_accepts_an_object_with_only_optional_fields_absent():
@@ -220,12 +220,13 @@ def test_validate_schema_parses_a_well_formed_schema():
     parsed = schema.validate_schema(
         {
             "name": "company",
-            "label": "Company",
+            "label": {"singular": "Company", "plural": "Companies"},
             "fields": [{"key": "n", "type": "text"}],
         }
     )
 
     assert (parsed.name, parsed.fields[0].key) == ("company", "n")
+    assert parsed.label == {"singular": "Company", "plural": "Companies"}
 
 
 def test_validate_schema_defaults_a_field_label_to_its_key():
@@ -234,6 +235,28 @@ def test_validate_schema_defaults_a_field_label_to_its_key():
     )
 
     assert parsed.fields[0].label == "domain"
+
+
+def test_validate_schema_defaults_a_missing_label_to_the_name():
+    parsed = schema.validate_schema(
+        {"name": "company", "fields": [{"key": "domain", "type": "text"}]}
+    )
+
+    # Naive pluralization, same known limitation the frontend used to paper
+    # over with a client-side `label + "s"` concat.
+    assert parsed.label == {"singular": "company", "plural": "companys"}
+
+
+def test_validate_schema_defaults_a_missing_plural_from_the_singular():
+    parsed = schema.validate_schema(
+        {
+            "name": "company",
+            "label": {"singular": "Company"},
+            "fields": [{"key": "domain", "type": "text"}],
+        }
+    )
+
+    assert parsed.label == {"singular": "Company", "plural": "Companys"}
 
 
 def test_validate_schema_rejects_an_unknown_attribute():

@@ -229,7 +229,7 @@ class Schema:
 
     Attributes:
         name: The type key, e.g. "contact". Used as the object's `type`.
-        label: The type's display name.
+        label: The type's display name, as {"singular": ..., "plural": ...}.
         fields: The fields objects of this type may carry.
         builtin: Whether the app owns this schema, in which case its fields
             are not editable.
@@ -239,7 +239,7 @@ class Schema:
     """
 
     name: str
-    label: str
+    label: dict[str, str]
     fields: list[Field]
     builtin: bool = False
     title_field: str | None = None
@@ -252,7 +252,7 @@ class Schema:
         """
         data: Object = {
             "name": self.name,
-            "label": self.label,
+            "label": dict(self.label),
             "fields": [field.to_dict() for field in self.fields],
         }
         if self.builtin:
@@ -434,9 +434,24 @@ def validate_schema(data: Any) -> Schema:
             "definition's storage row and can't also name one"
         )
 
-    label = data.get("label", name)
-    if not isinstance(label, str):
-        raise SchemaError(f"{name}: label must be a string")
+    raw_label = data.get("label")
+    if raw_label is None:
+        label = {"singular": name, "plural": f"{name}s"}
+    else:
+        if not isinstance(raw_label, dict):
+            raise SchemaError(f"{name}: label must be an object")
+        unknown_label_keys = sorted(set(raw_label) - {"singular", "plural"})
+        if unknown_label_keys:
+            raise SchemaError(
+                f"{name}: unknown label attributes: {', '.join(unknown_label_keys)}"
+            )
+        singular = raw_label.get("singular")
+        if not isinstance(singular, str) or not singular:
+            raise SchemaError(f"{name}: label.singular must be a non-empty string")
+        plural = raw_label.get("plural", f"{singular}s")
+        if not isinstance(plural, str) or not plural:
+            raise SchemaError(f"{name}: label.plural must be a non-empty string")
+        label = {"singular": singular, "plural": plural}
 
     builtin = data.get("builtin", False)
     if not isinstance(builtin, bool):

@@ -40,6 +40,7 @@ import { ListsNav } from "./components/ListsNav";
 import { TypeObjectList } from "./components/TypeObjectList";
 import { TopBar } from "./components/TopBar";
 import { BirthdayView } from "./components/BirthdayView";
+import { SchemasView } from "./components/SchemasView";
 import { BatchTagModal } from "./components/BatchTagModal";
 import { SyncVerificationModal } from "./components/SyncVerificationModal";
 import { SyncReviewModal, type SyncDirection } from "./components/SyncReviewModal";
@@ -149,6 +150,7 @@ export function App() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isBirthdays = location.pathname === "/birthdays";
+  const isSchemasView = location.pathname === "/schemas";
   const { typeName, id: routeId } = parseAppPath(location.pathname);
   const selectedContactId = typeName === "contact" ? routeId : null;
   const selectedListId = typeName === "list" ? routeId : null;
@@ -220,10 +222,37 @@ export function App() {
   // predates this and has list-specific needs layered on top, like
   // `listMemberIds`) rather than unifying the two, to avoid risking the
   // already-working list path while adding this.
-  const isGenericType = !isBirthdays && typeName !== "contact" && typeName !== "list";
+  const isGenericType = !isBirthdays && !isSchemasView && typeName !== "contact" && typeName !== "list";
   const [genericSchema, setGenericSchema] = useState<SchemaObject | null>(null);
   const [genericObjects, setGenericObjects] = useState<SavedObject[]>([]);
   const [editingGenericId, setEditingGenericId] = useState<number | "new" | null>(null);
+
+  // Hand-built Schemas page -- there's no schema-object named "schema" (see
+  // SchemasView), so this can't go through the generic type browser above.
+  const [schemas, setSchemas] = useState<SchemaObject[]>([]);
+  const [editingSchemaName, setEditingSchemaName] = useState<string | "new" | null>(null);
+
+  useEffect(() => {
+    if (!isSchemasView) return;
+    let cancelled = false;
+    fetchSchemas()
+      .then((data) => {
+        if (!cancelled) setSchemas(data.schemas);
+      })
+      .catch(() => {
+        if (!cancelled) setSchemas([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSchemasView]);
+
+  // A selection made while browsing one type shouldn't silently carry over
+  // (and be exportable) after navigating to a different one.
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, [typeName, isSchemasView]);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
@@ -589,7 +618,7 @@ export function App() {
 
   // Stable identity so it doesn't defeat ContactList's memoization on every
   // keystroke in the search box.
-  const toggleContactSelection = useCallback((id: number) => {
+  const toggleObjectSelection = useCallback((id: number) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -601,8 +630,17 @@ export function App() {
     });
   }, []);
 
+  // The objects selection/export acts on, for whichever view is active.
+  function selectableObjects(): (Record<string, unknown> & { id: number })[] {
+    if (typeName === "contact") return contacts as unknown as (Record<string, unknown> & { id: number })[];
+    if (typeName === "list") return lists as unknown as (Record<string, unknown> & { id: number })[];
+    if (isSchemasView) return schemas as unknown as (Record<string, unknown> & { id: number })[];
+    return genericObjects;
+  }
+
   function selectAllVisible() {
-    setSelectedIds(new Set(visibleContacts.map((contact) => contact.id)));
+    const ids = typeName === "contact" ? visibleContacts.map((contact) => contact.id) : selectableObjects().map((obj) => obj.id);
+    setSelectedIds(new Set(ids));
   }
 
   async function finishSync(direction: SyncDirection, result: SyncResult) {
@@ -774,14 +812,14 @@ export function App() {
   }
 
   function handleExportSelected() {
-    const selected = contacts.filter((contact) => selectedIds.has(contact.id));
-    const lines = selected.map((contact) => "  " + JSON.stringify(contact));
+    const selected = selectableObjects().filter((obj) => selectedIds.has(obj.id));
+    const lines = selected.map((obj) => "  " + JSON.stringify(obj));
     const json = "[\n" + lines.join(",\n") + "\n]";
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "contacts.json";
+    link.download = `${isSchemasView ? "schemas" : typeName ?? "objects"}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -790,7 +828,7 @@ export function App() {
     <NavigateToObjectContext.Provider value={navigateToObject}>
     <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <TopBar
-        typeName={isBirthdays ? null : typeName}
+        typeName={isBirthdays || isSchemasView ? null : typeName}
         onSelectType={(nextTypeName) => navigate(`/types/${nextTypeName}`)}
         isBirthdays={isBirthdays}
         onToggleBirthdays={() => navigate(isBirthdays ? "/types/contact" : "/birthdays")}
@@ -801,8 +839,9 @@ export function App() {
           setEditingContactId("new");
         }}
         onNewList={handleNewList}
-        genericTypeLabel={isGenericType ? genericSchema?.label : undefined}
+        genericTypeLabel={isGenericType ? genericSchema?.label.singular : undefined}
         onNewGenericObject={isGenericType ? () => setEditingGenericId("new") : undefined}
+        canSelect={!isBirthdays}
         selectionMode={selectionMode}
         onToggleSelectionMode={toggleSelectionMode}
         selectedCount={selectedIds.size}
@@ -815,10 +854,34 @@ export function App() {
         onPull={() => handleStartSync("pull")}
         onPush={() => handleStartSync("push")}
         onOpenAdminConsole={() => setShowAdminConsole(true)}
+        isSchemasView={isSchemasView}
+        onToggleSchemas={() => navigate(isSchemasView ? "/types/contact" : "/schemas")}
+        onNewSchema={() => setEditingSchemaName("new")}
       />
 
       {isBirthdays ? (
         <BirthdayView contacts={contacts} onSelectContact={handleSelectContactFromBirthdays} />
+      ) : isSchemasView ? (
+        <SchemasView
+          schemas={schemas}
+          selectedName={editingSchemaName}
+          selectionMode={selectionMode}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleObjectSelection}
+          onSelect={setEditingSchemaName}
+          onSaved={(saved) => {
+            setSchemas((prev) => {
+              const exists = prev.some((s) => s.name === saved.name);
+              return exists ? prev.map((s) => (s.name === saved.name ? saved : s)) : [...prev, saved];
+            });
+            setEditingSchemaName(saved.name);
+          }}
+          onDeleted={(name) => {
+            setSchemas((prev) => prev.filter((s) => s.name !== name));
+            setEditingSchemaName(null);
+          }}
+          onCancel={() => setEditingSchemaName(null)}
+        />
       ) : typeName === "contact" ? (
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
           {!sidebarCollapsed && (
@@ -852,7 +915,7 @@ export function App() {
               scrollContainerRef={scrollContainerRef}
               selectionMode={selectionMode}
               selectedIds={selectedIds}
-              onToggleSelect={toggleContactSelection}
+              onToggleSelect={toggleObjectSelection}
               syncMessage={syncMessage}
               syncError={syncError}
               onDismissSyncStatus={() => {
@@ -915,6 +978,10 @@ export function App() {
               objects={lists as unknown as (Record<string, unknown> & { id: number })[]}
               selectedId={selectedListId}
               onSelect={(id) => navigate(`/types/list/${id}`)}
+              onSelectAll={() => navigate("/types/list")}
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleObjectSelection}
               subtitleFor={(obj) => `${listMemberIds[obj.id]?.length ?? 0} member${listMemberIds[obj.id]?.length === 1 ? "" : "s"}`}
               headerAction={
                 <Tooltip title="Re-run each list's query to refresh its membership">
@@ -986,6 +1053,15 @@ export function App() {
               objects={genericObjects}
               selectedId={routeId}
               onSelect={(id) => navigate(`/types/${typeName}/${id}`)}
+              onSelectAll={() => navigate(`/types/${typeName}`)}
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleObjectSelection}
+              subtitleFor={
+                typeName === "association"
+                  ? (obj) => `${obj.object_type_1} #${obj.object_id_1} ↔ ${obj.object_type_2} #${obj.object_id_2}`
+                  : undefined
+              }
             />
           )}
 
@@ -1024,7 +1100,7 @@ export function App() {
                     <Alert severity="error">Not found.</Alert>
                   ) : (
                     <Typography color="text.secondary">
-                      Select a {genericSchema.label.toLowerCase()} to see its details.
+                      Select a {genericSchema.label.singular.toLowerCase()} to see its details.
                     </Typography>
                   );
                 })()}

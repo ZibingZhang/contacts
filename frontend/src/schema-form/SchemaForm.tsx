@@ -57,7 +57,7 @@ export function SchemaForm({ schema, value, onCancel, onSaved, overlayFields, in
         : await createObject<SavedObject>(schema.name, payload);
       onSaved(saved);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : `Failed to ${value ? "save" : "create"} ${schema.label}`);
+      setError(err instanceof ApiError ? err.message : `Failed to ${value ? "save" : "create"} ${schema.label.singular}`);
       setIsSubmitting(false);
     }
   }
@@ -92,7 +92,7 @@ export function SchemaForm({ schema, value, onCancel, onSaved, overlayFields, in
           backgroundColor: "background.paper",
         }}
       >
-        <Typography variant="h5">{value ? `Edit ${schema.label}` : `New ${schema.label}`}</Typography>
+        <Typography variant="h5">{value ? `Edit ${schema.label.singular}` : `New ${schema.label.singular}`}</Typography>
         <Box sx={{ display: "flex", gap: 1 }}>
           <Button onClick={onCancel} disabled={isSubmitting}>
             Cancel

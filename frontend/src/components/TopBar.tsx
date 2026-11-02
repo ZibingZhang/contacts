@@ -19,8 +19,8 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import TerminalIcon from "@mui/icons-material/Terminal";
-import GroupsIcon from "@mui/icons-material/Groups";
 import CakeIcon from "@mui/icons-material/Cake";
+import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import PaletteIcon from "@mui/icons-material/Palette";
 import CheckIcon from "@mui/icons-material/Check";
 
@@ -99,6 +99,9 @@ interface TopBarProps {
   // Shown only when `typeName` is neither "contact" nor "list".
   genericTypeLabel?: string;
   onNewGenericObject?: () => void;
+  // Whether the current view has a selectable, exportable object list at
+  // all (every type-browsing view does; the birthday calendar doesn't).
+  canSelect: boolean;
   selectionMode: boolean;
   onToggleSelectionMode: () => void;
   selectedCount: number;
@@ -113,6 +116,9 @@ interface TopBarProps {
   onOpenAdminConsole: () => void;
   onToggleBirthdays: () => void;
   isBirthdays: boolean;
+  isSchemasView: boolean;
+  onToggleSchemas: () => void;
+  onNewSchema: () => void;
 }
 
 export function TopBar({
@@ -124,6 +130,7 @@ export function TopBar({
   onNewList,
   genericTypeLabel,
   onNewGenericObject,
+  canSelect,
   selectionMode,
   onToggleSelectionMode,
   selectedCount,
@@ -138,6 +145,9 @@ export function TopBar({
   onOpenAdminConsole,
   onToggleBirthdays,
   isBirthdays,
+  isSchemasView,
+  onToggleSchemas,
+  onNewSchema,
 }: TopBarProps) {
   const isContactsView = typeName === "contact";
   const isListsView = typeName === "list";
@@ -176,13 +186,17 @@ export function TopBar({
         <Button id="new-list-button" size="small" variant="contained" onClick={onNewList}>
           New List
         </Button>
+      ) : isSchemasView ? (
+        <Button size="small" variant="contained" onClick={onNewSchema}>
+          New Schema
+        </Button>
       ) : genericTypeLabel && onNewGenericObject ? (
         <Button size="small" variant="contained" onClick={onNewGenericObject}>
           New {genericTypeLabel}
         </Button>
       ) : null}
       <TypeNav currentTypeName={typeName} onSelectType={onSelectType} />
-      {isContactsView && (
+      {canSelect && (
         <Button
           id="selection-mode-toggle"
           size="small"
@@ -195,7 +209,7 @@ export function TopBar({
         </Button>
       )}
 
-      {isContactsView && selectionMode && (
+      {canSelect && selectionMode && (
         <>
           <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
           <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
@@ -210,9 +224,11 @@ export function TopBar({
           <Button size="small" variant="outlined" color="inherit" onClick={onExportSelected} disabled={selectedCount === 0}>
             Export
           </Button>
-          <Button size="small" variant="contained" onClick={onAddTags} disabled={selectedCount === 0}>
-            Add tags…
-          </Button>
+          {isContactsView && (
+            <Button size="small" variant="contained" onClick={onAddTags} disabled={selectedCount === 0}>
+              Add tags…
+            </Button>
+          )}
         </>
       )}
 
@@ -236,16 +252,16 @@ export function TopBar({
           </Tooltip>
         </>
       )}
-      <Tooltip title={isListsView ? "Switch to Contacts" : "Switch to Lists"}>
+      <Tooltip title={isSchemasView ? "Switch to Contacts" : "View and edit schemas"}>
         <IconButton
-          id="lists-view-toggle"
+          id="schemas-view-toggle"
           size="small"
-          aria-label="Toggle Lists view"
-          aria-pressed={isListsView}
-          color={isListsView ? "primary" : "default"}
-          onClick={() => onSelectType(isListsView ? "contact" : "list")}
+          aria-label="Toggle Schemas view"
+          aria-pressed={isSchemasView}
+          color={isSchemasView ? "primary" : "default"}
+          onClick={onToggleSchemas}
         >
-          <GroupsIcon fontSize="small" />
+          <AccountTreeIcon fontSize="small" />
         </IconButton>
       </Tooltip>
       <Tooltip title={isBirthdays ? "Switch to Contacts" : "View birthday calendar"}>
