@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+import copy
 import re
 from collections.abc import Sequence
 from typing import Literal
@@ -10,7 +11,8 @@ from typing import Literal
 from contacts import model
 from contacts.dao import disk_dao
 from contacts.logger import LOG
-from contacts.utils import contact_utils
+from contacts.utils import contact_utils, object_utils
+from contacts.utils.object_utils import Object
 
 _PATTERN_TO_HIGH_SCHOOL_NAME_MAP = {
     re.compile(r"^ABRSH$"): "Acton-Boxborough Regional High School",
@@ -40,7 +42,9 @@ def run(should_fix: bool) -> None:
     else:
         LOG.info("Validating contacts")
 
-    contacts = disk_dao.read_contacts()
+    contacts = disk_dao.read_objects(model.TYPE_CONTACT)
+    original_by_id = {contact["id"]: copy.deepcopy(contact) for contact in contacts}
+
     _validate_names(contacts)
     for contact in contacts:
         _validate_email_addresses(contact)
@@ -48,19 +52,15 @@ def run(should_fix: bool) -> None:
         _validate_tags(contact, should_fix)
 
     if should_fix:
-        updated_contacts = {contact.id: contact for contact in contacts}
-        current_contacts = {contact.id: contact for contact in disk_dao.read_contacts()}
-
-        disk_dao.update_contacts(
-            [
-                updated_contacts[contact_id]
-                for contact_id in updated_contacts.keys()
-                if updated_contacts[contact_id] != current_contacts[contact_id]
-            ]
-        )
+        changed = [
+            contact
+            for contact in contacts
+            if object_utils.diff(original_by_id[contact["id"]], contact)
+        ]
+        disk_dao.update_objects(model.TYPE_CONTACT, changed)
 
 
-def _validate_names(contacts: Sequence[model.Contact]) -> None:
+def _validate_names(contacts: Sequence[Object]) -> None:
     names_counter: collections.Counter[str] = collections.Counter()
     for contact in contacts:
         names_counter[contact_utils.build_name_str(contact)] += 1
@@ -69,41 +69,41 @@ def _validate_names(contacts: Sequence[model.Contact]) -> None:
             LOG.info(f"Duplicate name {name}")
 
 
-def _validate_email_addresses(contact: model.Contact) -> None:
-    if contact.email_addresses is None:
+def _validate_email_addresses(contact: Object) -> None:
+    email_addresses = contact.get("email_addresses")
+    if email_addresses is None:
         return None
 
-    normalized_email_addresses = set()
-    for email_address in contact.email_addresses:
-        normalized_email_addresses.add(email_address.address.lower().replace(".", ""))
-    if len(normalized_email_addresses) < len(contact.email_addresses):
+    normalized_email_addresses = {
+        email_address["address"].lower().replace(".", "")
+        for email_address in email_addresses
+    }
+    if len(normalized_email_addresses) < len(email_addresses):
         LOG.info(
             f"{contact_utils.build_name_str(contact)} has duplicate email addresses"
         )
 
 
-def _validate_education(contact: model.Contact, should_fix: bool) -> None:
-    if not contact.tags:
+def _validate_education(contact: Object, should_fix: bool) -> None:
+    tags = contact.get("tags")
+    if not tags:
         return None
 
     for pattern in _PATTERN_TO_HIGH_SCHOOL_NAME_MAP:
-        if tag := _any_tag_matches_pattern(contact.tags, pattern):
+        if tag := _any_tag_matches_pattern(tags, pattern):
             _expect_high_school(
                 contact, tag, _PATTERN_TO_HIGH_SCHOOL_NAME_MAP[pattern], should_fix
             )
 
-    if (
-        contact.education is not None
-        and contact.education.high_school is not None
-        and contact.education.high_school.name == "Needham High School"
-    ):
+    high_school = object_utils.get_path(contact, "education.high_school") or {}
+    if high_school.get("name") == "Needham High School":
         _expect_tag(contact, "NHS", should_fix)
-        if (year := contact.education.high_school.graduation_year) is not None:
+        if (year := high_school.get("graduation_year")) is not None:
             _expect_tag(contact, "NHS" + str(year)[2:], should_fix)
 
 
 def _expect_high_school(
-    contact: model.Contact, tag: str, high_school_name: str, should_fix: bool
+    contact: Object, tag: str, high_school_name: str, should_fix: bool
 ) -> None:
     contact_name = contact_utils.build_name_str(contact)
 
@@ -112,45 +112,50 @@ def _expect_high_school(
     else:
         graduation_year = None
 
-    if contact.education is None:
+    education = contact.get("education")
+    high_school = (education or {}).get("high_school")
+
+    if education is None:
         LOG.info(f"Adding education to {contact_name}")
-        contact.education = model.Education(
-            high_school=model.HighSchool(
-                name=high_school_name, graduation_year=graduation_year
+        contact["education"] = {
+            "high_school": object_utils.prune_none(
+                {"name": high_school_name, "graduation_year": graduation_year}
             )
-        )
-    elif contact.education.high_school is None:
+        }
+    elif high_school is None:
         LOG.info(f"Adding high school to {contact_name}")
-        contact.education.high_school = model.HighSchool(
-            name=high_school_name, graduation_year=graduation_year
+        education["high_school"] = object_utils.prune_none(
+            {"name": high_school_name, "graduation_year": graduation_year}
         )
-    elif contact.education.high_school.name != high_school_name:
+    elif high_school.get("name") != high_school_name:
         LOG.warn(f"{contact_name} high school is not {high_school_name}")
     elif graduation_year is not None:
-        if contact.education.high_school.graduation_year is None:
+        if high_school.get("graduation_year") is None:
             LOG.info(f"Adding high school graduation year to {contact_name}")
-            contact.education.high_school.graduation_year = graduation_year
-        elif graduation_year != contact.education.high_school.graduation_year:
+            high_school["graduation_year"] = graduation_year
+        elif graduation_year != high_school["graduation_year"]:
             LOG.warn(f"{contact_name} mismatched high school graduation year")
 
 
-def _validate_tags(contact: model.Contact, should_fix: bool) -> None:
-    if not contact.tags:
+def _validate_tags(contact: Object, should_fix: bool) -> None:
+    tags = contact.get("tags")
+    if not tags:
         return None
 
     for pattern in _PATTERN_TO_EXPECTED_TAG_MAP:
-        if _any_tag_matches_pattern(contact.tags, pattern):
+        if _any_tag_matches_pattern(tags, pattern):
             _expect_tag(contact, _PATTERN_TO_EXPECTED_TAG_MAP[pattern], should_fix)
 
 
-def _expect_tag(contact: model.Contact, tag: str, should_fix: bool) -> None:
-    if contact.tags is not None and tag in contact.tags:
+def _expect_tag(contact: Object, tag: str, should_fix: bool) -> None:
+    tags = contact.get("tags")
+    if tags is not None and tag in tags:
         return
 
     LOG.info(f"Adding {tag} tag to {contact_utils.build_name_str(contact)}")
 
     if should_fix:
-        contact.tags = (contact.tags or []) + [tag]
+        contact["tags"] = sorted(set((tags or []) + [tag]))
 
 
 def _any_tag_matches_pattern(

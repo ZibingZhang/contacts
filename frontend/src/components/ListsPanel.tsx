@@ -1,4 +1,4 @@
-import type { Group } from "../types";
+import type { ListObject } from "../types";
 import Box from "@mui/material/Box";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
@@ -12,19 +12,27 @@ import SyncIcon from "@mui/icons-material/Sync";
 
 const WIDTH = 320;
 
-interface GroupListProps {
-  groups: Group[];
-  selectedGroupId: number | null;
-  onSelectGroup: (groupId: number) => void;
+interface ListsPanelProps {
+  lists: ListObject[];
+  memberIds: Record<number, number[]>;
+  selectedListId: number | null;
+  onSelectList: (listId: number) => void;
   refreshing: boolean;
   onRefresh: () => void;
 }
 
-export function GroupList({ groups, selectedGroupId, onSelectGroup, refreshing, onRefresh }: GroupListProps) {
+export function ListsPanel({
+  lists,
+  memberIds,
+  selectedListId,
+  onSelectList,
+  refreshing,
+  onRefresh,
+}: ListsPanelProps) {
   return (
     <Box
       component="nav"
-      id="group-nav"
+      id="list-nav"
       sx={{
         width: WIDTH,
         flexShrink: 0,
@@ -45,14 +53,14 @@ export function GroupList({ groups, selectedGroupId, onSelectGroup, refreshing, 
         }}
       >
         <Typography variant="subtitle1" sx={{ flexGrow: 1, px: 1 }}>
-          Groups
+          Lists
         </Typography>
-        <Tooltip title="Re-run each group's query to refresh its membership">
+        <Tooltip title="Re-run each list's query to refresh its membership">
           <span>
             <IconButton
-              id="group-list-refresh-button"
+              id="lists-panel-refresh-button"
               size="small"
-              aria-label="Refresh groups"
+              aria-label="Refresh lists"
               onClick={onRefresh}
               disabled={refreshing}
             >
@@ -63,25 +71,25 @@ export function GroupList({ groups, selectedGroupId, onSelectGroup, refreshing, 
       </Box>
 
       <Box sx={{ flexGrow: 1, overflow: "auto" }}>
-        {groups.length === 0 ? (
+        {lists.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
-            No groups yet.
+            No lists yet.
           </Typography>
         ) : (
           <List dense>
-            {groups.map((group) => (
+            {lists.map((list) => (
               <ListItemButton
-                key={group.id}
-                data-group-id={group.id}
-                selected={selectedGroupId === group.id}
-                onClick={() => onSelectGroup(group.id)}
+                key={list.id}
+                data-list-id={list.id}
+                selected={selectedListId === list.id}
+                onClick={() => onSelectList(list.id)}
               >
-                <ListItemText primary={group.name} />
+                <ListItemText primary={list.name} />
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   <Typography variant="caption" color="text.secondary">
-                    {group.ids?.length ?? 0}
+                    {memberIds[list.id]?.length ?? 0}
                   </Typography>
-                  {group.sync ? (
+                  {list.sync ? (
                     <Chip size="small" color="success" label="Syncing" />
                   ) : (
                     <Chip size="small" variant="outlined" label="Local" />
@@ -104,7 +112,7 @@ export function GroupList({ groups, selectedGroupId, onSelectGroup, refreshing, 
         }}
       >
         <Typography variant="body2" color="text.secondary">
-          {groups.length} group{groups.length === 1 ? "" : "s"}
+          {lists.length} list{lists.length === 1 ? "" : "s"}
         </Typography>
       </Box>
     </Box>

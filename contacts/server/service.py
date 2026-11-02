@@ -1,18 +1,20 @@
-"""Query and update logic backing the HTTP API."""
+"""App-level logic backing the HTTP API.
+
+Generic object CRUD lives in `object_service`; what's left here is the
+contact-flavoured aggregates the UI needs (tags, field options) and the
+multi-step iCloud sync/push state machines.
+"""
 
 from __future__ import annotations
 
 import collections
-import sqlite3
 import time
-from typing import cast
 
 from contacts import model
 from contacts.dao import disk_dao, icloud_dao
-from contacts.server import errors
-from contacts.utils import contact_utils, dataclasses_utils, uuid_utils
-
-_contacts_cache: list[model.DiskContact] | None = None
+from contacts.server import errors, object_service
+from contacts.utils import contact_utils, object_utils
+from contacts.utils.object_utils import Object
 
 # Contacts/updates fetched from iCloud by the most recent start_sync_from_icloud()
 # or submit_sync_code(), awaiting apply_icloud_sync() to accept/decline each one.
@@ -27,103 +29,30 @@ _pending_push: dict[str, list] | None = None
 _PUSH_UPDATE_BATCH_SIZE = 5
 
 
-def list_contacts() -> list[model.DiskContact]:
-    """List all contacts, reading from disk only on the first call.
+def _icloud_uuid(contact: Object) -> str | None:
+    return object_utils.get_path(contact, "icloud.uuid")
 
-    Subsequent calls are served from an in-memory cache until
-    invalidate_contacts_cache() is called.
+
+def _by_icloud_uuid(contacts: list[Object]) -> dict[str, Object]:
+    return {
+        uuid: contact
+        for contact in contacts
+        if (uuid := _icloud_uuid(contact)) is not None
+    }
+
+
+def list_contacts() -> list[Object]:
+    """List all contacts.
 
     Returns:
         All contacts.
     """
-    global _contacts_cache
-    if _contacts_cache is None:
-        _contacts_cache = disk_dao.read_contacts()
-    return _contacts_cache
+    return object_service.list_objects(model.TYPE_CONTACT)
 
 
 def invalidate_contacts_cache() -> None:
-    """Clear the cached contacts so the next list_contacts() re-reads from disk."""
-    global _contacts_cache
-    _contacts_cache = None
-
-
-def get_contact(contact_id: int) -> model.DiskContact | None:
-    """Get a single contact by id.
-
-    Args:
-        contact_id: The id of the contact.
-
-    Returns:
-        The contact, or None if no contact with that id exists.
-    """
-    contacts_by_id = {contact.id: contact for contact in disk_dao.read_contacts()}
-    return contacts_by_id.get(contact_id)
-
-
-def create_contact(data: dict) -> model.DiskContact:
-    """Creates a new contact from user-provided field data.
-
-    Args:
-        data: Contact field data matching model.Contact's JSON shape (no
-            "id", "ctime", "mtime", or "icloud" -- those are assigned here).
-
-    Returns:
-        The newly created contact, with its assigned id.
-
-    Raises:
-        errors.ValidationError: If the data doesn't match the contact schema.
-    """
-    try:
-        contact = model.Contact.from_dict(data)
-    except Exception as e:
-        raise errors.ValidationError(f"Invalid contact data: {e}") from e
-
-    contact.mtime = time.time()
-    contact.icloud = model.ICloudMetadata(uuid=uuid_utils.generate())
-
-    new_contact = cast(model.DiskContact, contact)
-    disk_dao.create_contacts([new_contact])
-    invalidate_contacts_cache()
-
-    return new_contact
-
-
-def update_contact(contact_id: int, data: dict) -> model.DiskContact:
-    """Overwrites a contact's field data, preserving its id and iCloud link.
-
-    Args:
-        contact_id: The id of the contact to update.
-        data: Contact field data matching model.Contact's JSON shape (no
-            "id", "ctime", "mtime", or "icloud" -- those are preserved/assigned
-            here).
-
-    Returns:
-        The updated contact.
-
-    Raises:
-        errors.NotFoundError: If no contact with that id exists.
-        errors.ValidationError: If the data doesn't match the contact schema.
-    """
-    existing_contact = get_contact(contact_id)
-    if existing_contact is None:
-        raise errors.NotFoundError(f"Contact {contact_id} not found")
-
-    try:
-        contact = model.Contact.from_dict(data)
-    except Exception as e:
-        raise errors.ValidationError(f"Invalid contact data: {e}") from e
-
-    contact.id = contact_id
-    contact.ctime = existing_contact.ctime
-    contact.mtime = time.time()
-    contact.icloud = existing_contact.icloud
-
-    updated_contact = cast(model.DiskContact, contact)
-    disk_dao.update_contacts([updated_contact])
-    invalidate_contacts_cache()
-
-    return updated_contact
+    """Clear cached objects so the next read goes back to disk."""
+    object_service.invalidate_cache()
 
 
 def list_contact_field_options() -> dict:
@@ -139,9 +68,11 @@ def list_contact_field_options() -> dict:
         "country_codes": [
             {
                 "code": int(code),
-                "label": "United States/Canada"
-                if code is model.CountryCode.NANP
-                else code.name.replace("_", " ").title(),
+                "label": (
+                    "United States/Canada"
+                    if code is model.CountryCode.NANP
+                    else code.name.replace("_", " ").title()
+                ),
             }
             for code in model.CountryCode
         ],
@@ -159,7 +90,7 @@ def list_tags() -> list[dict]:
     contacts = list_contacts()
     tag_counts: collections.Counter[str] = collections.Counter()
     for contact in contacts:
-        tag_counts.update(contact.tags or [])
+        tag_counts.update(contact.get("tags") or [])
 
     return [
         {"tag": tag, "count": tag_counts[tag]}
@@ -167,9 +98,7 @@ def list_tags() -> list[dict]:
     ]
 
 
-def add_tags_to_contacts(
-    contact_ids: list[int], tags: list[str]
-) -> list[model.DiskContact]:
+def add_tags_to_contacts(contact_ids: list[int], tags: list[str]) -> list[Object]:
     """Add tags to a batch of contacts, unioning with each contact's existing tags.
 
     Args:
@@ -182,7 +111,7 @@ def add_tags_to_contacts(
     Raises:
         errors.NotFoundError: If any of the contact_ids do not exist.
     """
-    contacts_by_id = {contact.id: contact for contact in list_contacts()}
+    contacts_by_id = {contact["id"]: contact for contact in list_contacts()}
 
     missing_ids = [
         contact_id for contact_id in contact_ids if contact_id not in contacts_by_id
@@ -190,175 +119,16 @@ def add_tags_to_contacts(
     if missing_ids:
         raise errors.NotFoundError(f"Contact(s) not found: {missing_ids}")
 
-    updated_contacts = [contacts_by_id[contact_id] for contact_id in contact_ids]
-    for contact in updated_contacts:
-        contact.tags = (contact.tags or []) + tags
+    updated_contacts = []
+    for contact_id in contact_ids:
+        contact = dict(contacts_by_id[contact_id])
+        contact["tags"] = sorted(set((contact.get("tags") or []) + tags))
+        contact["mtime"] = time.time()
+        updated_contacts.append(contact)
 
-    disk_dao.update_contacts(updated_contacts)
-    invalidate_contacts_cache()
+    object_service.write_objects(model.TYPE_CONTACT, updated_contacts)
 
     return updated_contacts
-
-
-def list_groups() -> list[model.DiskGroup]:
-    """List all groups.
-
-    Returns:
-        All groups.
-    """
-    return disk_dao.read_groups()
-
-
-def get_group(group_id: int) -> model.DiskGroup | None:
-    """Get a single group by id.
-
-    Args:
-        group_id: The id of the group.
-
-    Returns:
-        The group, or None if no group with that id exists.
-    """
-    groups_by_id = {group.id: group for group in disk_dao.read_groups()}
-    return groups_by_id.get(group_id)
-
-
-def _run_group_query(query: str) -> list[int]:
-    """Runs a group's `query` and returns the contact ids it matches.
-
-    Args:
-        query: A SQL statement whose first result column is a contact id.
-
-    Returns:
-        The matching contact ids, in the order returned by the query.
-
-    Raises:
-        errors.ValidationError: If the query is invalid, or its first column
-            isn't a contact id.
-    """
-    try:
-        rows = disk_dao.run_readonly_query(query)
-    except sqlite3.Error as e:
-        raise errors.ValidationError(f"Invalid group query: {e}") from e
-
-    try:
-        return [int(row[0]) for row in rows]
-    except (IndexError, TypeError, ValueError) as e:
-        raise errors.ValidationError(
-            f"Group query must return a contact id as its first column: {e}"
-        ) from e
-
-
-def create_group(data: dict) -> model.DiskGroup:
-    """Creates a new group from user-provided field data.
-
-    Runs the group's `query` immediately to populate its initial `ids`.
-
-    Args:
-        data: Group field data matching model.Group's JSON shape (no "id",
-            "ids", "ctime", "mtime", or "icloud" -- those are assigned here).
-
-    Returns:
-        The newly created group, with its assigned id and ids.
-
-    Raises:
-        errors.ValidationError: If the data doesn't match the group schema,
-            or its query is invalid.
-    """
-    try:
-        group = model.Group.from_dict(data)
-    except Exception as e:
-        raise errors.ValidationError(f"Invalid group data: {e}") from e
-
-    group.ids = _run_group_query(group.query)
-
-    new_group = cast(model.DiskGroup, group)
-    disk_dao.create_groups([new_group])
-
-    return new_group
-
-
-def update_group(group_id: int, data: dict) -> model.DiskGroup:
-    """Overwrites a group's field data, preserving its id and iCloud link.
-
-    Re-runs the (possibly changed) `query` to refresh `ids`.
-
-    Args:
-        group_id: The id of the group to update.
-        data: Group field data matching model.Group's JSON shape (no "id",
-            "ids", "ctime", "mtime", or "icloud" -- those are preserved/
-            assigned here).
-
-    Returns:
-        The updated group.
-
-    Raises:
-        errors.NotFoundError: If no group with that id exists.
-        errors.ValidationError: If the data doesn't match the group schema,
-            or its query is invalid.
-    """
-    existing_group = get_group(group_id)
-    if existing_group is None:
-        raise errors.NotFoundError(f"Group {group_id} not found")
-
-    try:
-        group = model.Group.from_dict(data)
-    except Exception as e:
-        raise errors.ValidationError(f"Invalid group data: {e}") from e
-
-    group.id = group_id
-    group.ctime = existing_group.ctime
-    group.mtime = time.time()
-    group.icloud = existing_group.icloud
-    group.ids = _run_group_query(group.query)
-
-    updated_group = cast(model.DiskGroup, group)
-    disk_dao.update_groups([updated_group])
-
-    return updated_group
-
-
-def refresh_group(group_id: int) -> model.DiskGroup:
-    """Re-runs a group's query, updating its cached `ids` only if membership
-    actually changed.
-
-    Unlike `update_group`, this doesn't touch any other field, and leaves
-    `mtime` untouched when the query's result set hasn't changed -- meant to
-    be called periodically (e.g. by `sync_groups`) without bumping `mtime` on
-    every call.
-
-    Args:
-        group_id: The id of the group to refresh.
-
-    Returns:
-        The group, with `ids` refreshed if membership changed.
-
-    Raises:
-        errors.NotFoundError: If no group with that id exists.
-        errors.ValidationError: If the group's query is invalid.
-    """
-    group = get_group(group_id)
-    if group is None:
-        raise errors.NotFoundError(f"Group {group_id} not found")
-
-    new_ids = _run_group_query(group.query)
-    if set(new_ids) == set(group.ids or []):
-        return group
-
-    group.ids = new_ids
-    group.mtime = time.time()
-    disk_dao.update_groups([group])
-
-    return group
-
-
-def refresh_groups() -> list[model.DiskGroup]:
-    """Re-runs every group's query, refreshing `ids` for any whose
-    membership changed.
-
-    Returns:
-        All groups, post-refresh.
-    """
-    return [refresh_group(group.id) for group in list_groups()]
 
 
 def _begin_icloud_auth() -> dict | None:
@@ -428,7 +198,8 @@ def submit_sync_device(device_index: int) -> dict:
         device_index: Index into that challenge's `devices` list.
 
     Returns:
-        {"status": "requires_verification", "verification_kind": "code", "devices": []}.
+        {"status": "requires_verification", "verification_kind": "code",
+        "devices": []}.
 
     Raises:
         errors.SyncError: If sending the verification code fails.
@@ -438,7 +209,11 @@ def submit_sync_device(device_index: int) -> dict:
     except Exception as e:
         raise errors.SyncError(f"Failed to send verification code: {e}") from e
 
-    return {"status": "requires_verification", "verification_kind": "code", "devices": []}
+    return {
+        "status": "requires_verification",
+        "verification_kind": "code",
+        "devices": [],
+    }
 
 
 def submit_sync_code(code: str) -> dict:
@@ -490,18 +265,18 @@ def apply_icloud_sync(
     accepted_creates = [
         contact
         for contact in _pending_sync["created"]
-        if contact.icloud.uuid in create_ids
+        if _icloud_uuid(contact) in create_ids
     ]
     accepted_updates = [
         updated_contact
         for _, updated_contact in _pending_sync["updated"]
-        if updated_contact.icloud.uuid in update_ids
+        if _icloud_uuid(updated_contact) in update_ids
     ]
 
     if accepted_creates:
-        disk_dao.create_contacts(accepted_creates)
+        disk_dao.create_objects(model.TYPE_CONTACT, accepted_creates)
     if accepted_updates:
-        disk_dao.update_contacts(accepted_updates)
+        disk_dao.update_objects(model.TYPE_CONTACT, accepted_updates)
     if accepted_creates or accepted_updates:
         invalidate_contacts_cache()
 
@@ -536,39 +311,27 @@ def _prepare_icloud_sync() -> dict:
     except Exception as e:
         raise errors.SyncError(f"Failed to sync from iCloud: {e}") from e
 
-    disk_contacts = disk_dao.read_contacts()
+    # Deliberately a fresh read rather than the cache: the staged contacts
+    # below are mutated, which must not touch cached objects.
+    disk_contacts = disk_dao.read_objects(model.TYPE_CONTACT)
 
-    icloud_id_to_icloud_contact_map: dict[str, model.Contact] = {
-        contact.icloud.uuid: contact
-        for contact in icloud_contacts
-        if contact.icloud is not None
-    }
-    icloud_id_to_disk_contact_map: dict[str, model.DiskContact] = {
-        contact.icloud.uuid: contact
-        for contact in disk_contacts
-        if contact.icloud is not None
-    }
+    icloud_by_uuid = _by_icloud_uuid(icloud_contacts)
+    disk_by_uuid = _by_icloud_uuid(disk_contacts)
 
     created_contacts = [
-        icloud_id_to_icloud_contact_map[icloud_id]
-        for icloud_id in (
-            icloud_id_to_icloud_contact_map.keys()
-            - icloud_id_to_disk_contact_map.keys()
-        )
+        icloud_by_uuid[icloud_id]
+        for icloud_id in (icloud_by_uuid.keys() - disk_by_uuid.keys())
     ]
 
-    updated_pairs: list[tuple[model.DiskContact, model.DiskContact]] = []
-    for icloud_id in (
-        icloud_id_to_disk_contact_map.keys() & icloud_id_to_icloud_contact_map.keys()
-    ):
-        icloud_contact = icloud_id_to_icloud_contact_map[icloud_id]
-        disk_contact = icloud_id_to_disk_contact_map[icloud_id]
+    updated_pairs: list[tuple[Object, Object]] = []
+    for icloud_id in disk_by_uuid.keys() & icloud_by_uuid.keys():
+        icloud_contact = icloud_by_uuid[icloud_id]
+        disk_contact = disk_by_uuid[icloud_id]
 
-        updated_contact = disk_contact.copy()
-        updated_contact.patch(icloud_contact)
+        updated_contact = object_utils.deep_merge(disk_contact, icloud_contact)
 
-        if dataclasses_utils.diff(disk_contact, updated_contact):
-            updated_contact.mtime = time.time()
+        if object_utils.diff(disk_contact, updated_contact):
+            updated_contact["mtime"] = time.time()
             updated_pairs.append((disk_contact, updated_contact))
 
     if not created_contacts and not updated_pairs:
@@ -580,19 +343,14 @@ def _prepare_icloud_sync() -> dict:
     return {
         "status": "review",
         "created": [
-            {
-                "icloud_id": cast(model.ICloudMetadata, contact.icloud).uuid,
-                "contact": contact.to_dict(),
-            }
+            {"icloud_id": _icloud_uuid(contact), "contact": contact}
             for contact in created_contacts
         ],
         "updated": [
             {
-                "icloud_id": cast(
-                    model.ICloudMetadata, updated_contact.icloud
-                ).uuid,
-                "before": disk_contact.to_dict(),
-                "after": updated_contact.to_dict(),
+                "icloud_id": _icloud_uuid(updated_contact),
+                "before": disk_contact,
+                "after": updated_contact,
             }
             for disk_contact, updated_contact in updated_pairs
         ],
@@ -632,7 +390,8 @@ def submit_push_device(device_index: int) -> dict:
         device_index: Index into that challenge's `devices` list.
 
     Returns:
-        {"status": "requires_verification", "verification_kind": "code", "devices": []}.
+        {"status": "requires_verification", "verification_kind": "code",
+        "devices": []}.
 
     Raises:
         errors.SyncError: If sending the verification code fails.
@@ -642,7 +401,11 @@ def submit_push_device(device_index: int) -> dict:
     except Exception as e:
         raise errors.SyncError(f"Failed to send verification code: {e}") from e
 
-    return {"status": "requires_verification", "verification_kind": "code", "devices": []}
+    return {
+        "status": "requires_verification",
+        "verification_kind": "code",
+        "devices": [],
+    }
 
 
 def submit_push_code(code: str) -> dict:
@@ -698,12 +461,12 @@ def apply_icloud_push(
     accepted_creates = [
         contact
         for contact in _pending_push["created"]
-        if cast(model.ICloudMetadata, contact.icloud).uuid in create_ids
+        if _icloud_uuid(contact) in create_ids
     ]
     accepted_updates = [
         disk_contact
         for _, disk_contact in _pending_push["updated"]
-        if cast(model.ICloudMetadata, disk_contact.icloud).uuid in update_ids
+        if _icloud_uuid(disk_contact) in update_ids
     ]
 
     _pending_push = None
@@ -751,36 +514,26 @@ def _prepare_icloud_push() -> dict:
     except Exception as e:
         raise errors.SyncError(f"Failed to read from iCloud: {e}") from e
 
-    disk_contacts = disk_dao.read_contacts()
+    # A fresh read, since remove_unsynced_fields below mutates these.
+    disk_contacts = disk_dao.read_objects(model.TYPE_CONTACT)
 
-    icloud_id_to_disk_contact_map: dict[str, model.DiskContact] = {
-        contact.icloud.uuid: contact
-        for contact in disk_contacts
-        if contact.icloud is not None
-    }
-    icloud_id_to_icloud_contact_map: dict[str, model.Contact] = {
-        cast(model.ICloudMetadata, contact.icloud).uuid: contact
-        for contact in icloud_contacts
-    }
+    disk_by_uuid = _by_icloud_uuid(disk_contacts)
+    icloud_by_uuid = _by_icloud_uuid(icloud_contacts)
 
     new_contacts = []
-    for icloud_id in (
-        icloud_id_to_disk_contact_map.keys() - icloud_id_to_icloud_contact_map.keys()
-    ):
-        new_contact = icloud_id_to_disk_contact_map[icloud_id]
+    for icloud_id in disk_by_uuid.keys() - icloud_by_uuid.keys():
+        new_contact = disk_by_uuid[icloud_id]
         contact_utils.remove_unsynced_fields(new_contact)
         new_contacts.append(new_contact)
 
-    updated_pairs: list[tuple[model.Contact, model.DiskContact]] = []
-    for icloud_id in (
-        icloud_id_to_disk_contact_map.keys() & icloud_id_to_icloud_contact_map.keys()
-    ):
-        disk_contact = icloud_id_to_disk_contact_map[icloud_id]
+    updated_pairs: list[tuple[Object, Object]] = []
+    for icloud_id in disk_by_uuid.keys() & icloud_by_uuid.keys():
+        disk_contact = disk_by_uuid[icloud_id]
         contact_utils.remove_unsynced_fields(disk_contact)
-        icloud_contact = icloud_id_to_icloud_contact_map[icloud_id]
+        icloud_contact = icloud_by_uuid[icloud_id]
 
         diff = contact_utils.normalize_push_diff(
-            dataclasses_utils.diff(icloud_contact, disk_contact)
+            object_utils.diff(icloud_contact, disk_contact)
         )
 
         if diff:
@@ -795,17 +548,14 @@ def _prepare_icloud_push() -> dict:
     return {
         "status": "review",
         "created": [
-            {
-                "icloud_id": cast(model.ICloudMetadata, contact.icloud).uuid,
-                "contact": contact.to_dict(),
-            }
+            {"icloud_id": _icloud_uuid(contact), "contact": contact}
             for contact in new_contacts
         ],
         "updated": [
             {
-                "icloud_id": cast(model.ICloudMetadata, disk_contact.icloud).uuid,
-                "before": icloud_contact.to_dict(),
-                "after": disk_contact.to_dict(),
+                "icloud_id": _icloud_uuid(disk_contact),
+                "before": icloud_contact,
+                "after": disk_contact,
             }
             for icloud_contact, disk_contact in updated_pairs
         ],
@@ -820,33 +570,23 @@ def _sync_etags_after_push() -> None:
     there shouldn't be one right after a successful push.
     """
     icloud_contacts, _ = icloud_dao.read_contacts_and_groups(cached=False)
-    disk_contacts = disk_dao.read_contacts()
+    disk_contacts = disk_dao.read_objects(model.TYPE_CONTACT)
 
-    icloud_id_to_icloud_contact_map: dict[str, model.Contact] = {
-        contact.icloud.uuid: contact
-        for contact in icloud_contacts
-        if contact.icloud is not None
-    }
-    icloud_id_to_disk_contact_map: dict[str, model.DiskContact] = {
-        contact.icloud.uuid: contact
-        for contact in disk_contacts
-        if contact.icloud is not None
-    }
+    icloud_by_uuid = _by_icloud_uuid(icloud_contacts)
+    disk_by_uuid = _by_icloud_uuid(disk_contacts)
 
     etag_updates = []
-    for icloud_id in (
-        icloud_id_to_disk_contact_map.keys() & icloud_id_to_icloud_contact_map.keys()
-    ):
-        disk_contact = icloud_id_to_disk_contact_map[icloud_id]
-        icloud_contact = icloud_id_to_icloud_contact_map[icloud_id]
+    for icloud_id in disk_by_uuid.keys() & icloud_by_uuid.keys():
+        disk_contact = disk_by_uuid[icloud_id]
+        icloud_contact = icloud_by_uuid[icloud_id]
 
-        updated_contact = disk_contact.copy()
-        updated_contact.patch(icloud_contact)
-        diff = dataclasses_utils.diff(disk_contact, updated_contact)
+        updated_contact = object_utils.deep_merge(disk_contact, icloud_contact)
+        diff = object_utils.diff(disk_contact, updated_contact)
 
         if diff and contact_utils.only_etag_updated(diff):
-            updated_contact.mtime = time.time()
+            updated_contact["mtime"] = time.time()
             etag_updates.append(updated_contact)
 
     if etag_updates:
-        disk_dao.update_contacts(etag_updates)
+        disk_dao.update_objects(model.TYPE_CONTACT, etag_updates)
+        invalidate_contacts_cache()

@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from contacts import model
 from contacts.utils import command_utils, contact_utils
+from contacts.utils.object_utils import Object
 
 
 def run() -> None:
     contacts = command_utils.read_contacts_from_disk()
     families = command_utils.read_families_from_disk()
-    contact_id_to_contact_map: dict[int, model.Contact] = {
-        contact.id: contact for contact in contacts
+    contact_id_to_contact_map: dict[int, Object] = {
+        contact["id"]: contact for contact in contacts
     }
 
     for family in families:
@@ -21,7 +22,7 @@ def run() -> None:
 # https://simonhessner.de/python-3-recursively-print-structured-tree-including-hierarchy-markers-using-depth-first-search/
 def _print_family(
     family: model.Family | int,
-    contact_id_to_contact_map: dict[int, model.Contact],
+    contact_id_to_contact_map: dict[int, Object],
     level_markers: tuple[bool, ...] = (),
 ) -> None:
     markers = "".join(map(lambda draw: "│  " if draw else "   ", level_markers[:-1]))

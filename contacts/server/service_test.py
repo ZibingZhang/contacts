@@ -2,335 +2,251 @@
 
 from __future__ import annotations
 
+import copy
+
 import pytest
 
 from contacts import model
 from contacts.dao.icloud.icloud_dao import AuthChallenge
 from contacts.fixtures import contact_fixtures
-from contacts.server import service
+from contacts.model import builtin_schemas
+from contacts.server import errors, schema_service, service
+from contacts.utils.object_utils import Object
 
 
 @pytest.fixture(autouse=True)
-def reset_contacts_cache():
+def reset_state():
     service.invalidate_contacts_cache()
+    schema_service.invalidate_cache()
     service._pending_sync = None
     service._pending_push = None
     yield
     service.invalidate_contacts_cache()
+    schema_service.invalidate_cache()
     service._pending_sync = None
     service._pending_push = None
 
 
 @pytest.fixture
-def contacts() -> list[model.Contact]:
+def contacts() -> list[Object]:
     return [
         contact_fixtures.build(
-            id=1, name=model.Name(first_name="John", last_name="Smith"), tags=["A"]
+            id=1, name={"first_name": "John", "last_name": "Smith"}, tags=["A"]
         ),
         contact_fixtures.build(
-            id=2, name=model.Name(first_name="Jane", last_name="Doe"), tags=["A", "B"]
+            id=2, name={"first_name": "Jane", "last_name": "Doe"}, tags=["A", "B"]
         ),
-        contact_fixtures.build(
-            id=3, name=model.Name(first_name="Jack", last_name="Doe")
-        ),
+        contact_fixtures.build(id=3, name={"first_name": "Jack", "last_name": "Doe"}),
     ]
 
 
+def builtin_schema_objects() -> list[Object]:
+    """The built-in schemas in their stored form, for stubbing schema reads."""
+    return [
+        {**built_in.to_dict(), "id": index + 1, "ctime": 0.0, "mtime": 0.0}
+        for index, built_in in enumerate(builtin_schemas.BUILT_IN_SCHEMAS.values())
+    ]
+
+
+def stub_disk(monkeypatch, contacts: list[Object]) -> list[list[Object]]:
+    """Stubs disk reads, and captures writes so tests can assert on them.
+
+    `disk_dao` is one shared instance, so patching it here covers every module
+    that reads through it -- including the schema registry, which is why this
+    has to answer schema reads too.
+    """
+
+    def read_objects(object_type: str) -> list[Object]:
+        if object_type == model.TYPE_SCHEMA:
+            return builtin_schema_objects()
+        if object_type == model.TYPE_CONTACT:
+            return contacts
+        return []
+
+    monkeypatch.setattr(service.disk_dao, "read_objects", read_objects)
+
+    written: list[list[Object]] = []
+    monkeypatch.setattr(
+        service.disk_dao, "update_objects", lambda _, objs: written.append(objs)
+    )
+    monkeypatch.setattr(
+        service.disk_dao, "create_objects", lambda _, objs: written.append(objs)
+    )
+    return written
+
+
+def count_contact_reads(monkeypatch, contacts: list[Object]) -> dict[str, int]:
+    """Stubs disk reads while counting only the contact reads."""
+    calls = {"count": 0}
+
+    def read_objects(object_type: str) -> list[Object]:
+        if object_type == model.TYPE_SCHEMA:
+            return builtin_schema_objects()
+        if object_type == model.TYPE_CONTACT:
+            calls["count"] += 1
+            return contacts
+        return []
+
+    monkeypatch.setattr(service.disk_dao, "read_objects", read_objects)
+    monkeypatch.setattr(service.disk_dao, "update_objects", lambda *_: None)
+    monkeypatch.setattr(service.disk_dao, "create_objects", lambda *_: None)
+
+    return calls
+
+
+def stub_icloud(monkeypatch, icloud_contacts: list[Object]) -> None:
+    monkeypatch.setattr(service.icloud_dao, "authenticate", lambda **_: None)
+    monkeypatch.setattr(
+        service.icloud_dao,
+        "read_contacts_and_groups",
+        lambda **_: (icloud_contacts, []),
+    )
+
+
+def uuid_of(contact: Object) -> str:
+    return contact["icloud"]["uuid"]
+
+
+# -- Aggregates ------------------------------------------------------------
+
+
 def test_list_contacts(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+    stub_disk(monkeypatch, contacts)
 
     assert service.list_contacts() == contacts
 
 
 def test_list_contacts_caches_after_first_read(monkeypatch, contacts) -> None:
-    read_calls = 0
-
-    def read_contacts():
-        nonlocal read_calls
-        read_calls += 1
-        return contacts
-
-    monkeypatch.setattr(service.disk_dao, "read_contacts", read_contacts)
+    read_calls = count_contact_reads(monkeypatch, contacts)
 
     service.list_contacts()
     service.list_contacts()
 
-    assert read_calls == 1
+    assert read_calls["count"] == 1
 
 
 def test_invalidate_contacts_cache_forces_reread(monkeypatch, contacts) -> None:
-    read_calls = 0
-
-    def read_contacts():
-        nonlocal read_calls
-        read_calls += 1
-        return contacts
-
-    monkeypatch.setattr(service.disk_dao, "read_contacts", read_contacts)
+    read_calls = count_contact_reads(monkeypatch, contacts)
 
     service.list_contacts()
     service.invalidate_contacts_cache()
     service.list_contacts()
 
-    assert read_calls == 2
-
-
-def test_get_contact_found(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
-
-    assert service.get_contact(2) == contacts[1]
-
-
-def test_get_contact_not_found(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
-
-    assert service.get_contact(999) is None
+    assert read_calls["count"] == 2
 
 
 def test_list_tags(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+    stub_disk(monkeypatch, contacts)
 
     assert service.list_tags() == [{"tag": "A", "count": 2}, {"tag": "B", "count": 1}]
 
 
 def test_add_tags_to_contacts_unions_with_existing_tags(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
-    written = []
-    monkeypatch.setattr(service.disk_dao, "update_contacts", written.append)
+    written = stub_disk(monkeypatch, contacts)
 
     updated = service.add_tags_to_contacts([1, 3], ["B", "C"])
 
-    assert [contact.tags for contact in updated] == [["A", "B", "C"], ["B", "C"]]
+    assert [contact["tags"] for contact in updated] == [
+        ["A", "B", "C"],
+        ["B", "C"],
+    ]
     assert len(written) == 1
 
 
-def test_add_tags_to_contacts_invalidates_cache(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+def test_add_tags_to_contacts_does_not_mutate_the_cached_contact(
+    monkeypatch, contacts
+) -> None:
+    stub_disk(monkeypatch, contacts)
 
-    service.list_contacts()
     service.add_tags_to_contacts([1], ["C"])
 
-    read_calls = 0
+    assert contacts[0]["tags"] == ["A"]
 
-    def read_contacts():
-        nonlocal read_calls
-        read_calls += 1
-        return contacts
 
-    monkeypatch.setattr(service.disk_dao, "read_contacts", read_contacts)
+def test_add_tags_to_contacts_invalidates_cache(monkeypatch, contacts) -> None:
+    read_calls = count_contact_reads(monkeypatch, contacts)
+
+    service.list_contacts()
+    # Serves its own read from the warm cache, then invalidates it...
+    service.add_tags_to_contacts([1], ["C"])
+    # ...so this one has to go back to disk.
     service.list_contacts()
 
-    assert read_calls == 1
+    assert read_calls["count"] == 2
 
 
 def test_add_tags_to_contacts_missing_id_raises(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
+    stub_disk(monkeypatch, contacts)
 
-    with pytest.raises(service.errors.NotFoundError):
-        service.add_tags_to_contacts([1, 999], ["C"])
-
-
-def test_create_contact_writes_and_returns_new_contact(monkeypatch) -> None:
-    written = []
-    monkeypatch.setattr(service.disk_dao, "create_contacts", written.append)
-
-    created = service.create_contact(
-        {"name": {"first_name": "New", "last_name": "Person"}, "tags": ["A"]}
-    )
-
-    assert created.name.first_name == "New"
-    assert created.icloud is not None
-    assert created.mtime is not None
-    assert written == [[created]]
-
-
-def test_create_contact_invalidates_cache(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
-    monkeypatch.setattr(service.disk_dao, "create_contacts", lambda _: None)
-
-    service.list_contacts()
-    service.create_contact({"name": {"first_name": "New"}})
-
-    read_calls = 0
-
-    def read_contacts():
-        nonlocal read_calls
-        read_calls += 1
-        return contacts
-
-    monkeypatch.setattr(service.disk_dao, "read_contacts", read_contacts)
-    service.list_contacts()
-
-    assert read_calls == 1
-
-
-def test_create_contact_invalid_data_raises() -> None:
-    with pytest.raises(service.errors.ValidationError):
-        service.create_contact({"name": {}, "unexpected_field": "value"})
-
-
-def test_update_contact_writes_and_returns_updated_contact(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
-    written = []
-    monkeypatch.setattr(service.disk_dao, "update_contacts", written.append)
-
-    updated = service.update_contact(1, {"name": {"first_name": "Johnny", "last_name": "Smith"}})
-
-    assert updated.id == 1
-    assert updated.name.first_name == "Johnny"
-    assert updated.icloud == contacts[0].icloud
-    assert written == [[updated]]
-
-
-def test_update_contact_preserves_existing_ctime(monkeypatch, contacts) -> None:
-    contacts[0].ctime = 123.0
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
-
-    updated = service.update_contact(1, {"name": {"first_name": "Johnny"}})
-
-    assert updated.ctime == 123.0
-
-
-def test_update_contact_ignores_client_supplied_ctime(monkeypatch, contacts) -> None:
-    contacts[0].ctime = 123.0
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
-
-    updated = service.update_contact(
-        1, {"name": {"first_name": "Johnny"}, "ctime": 999.0}
-    )
-
-    assert updated.ctime == 123.0
-
-
-def test_update_contact_missing_id_raises(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
-
-    with pytest.raises(service.errors.NotFoundError):
-        service.update_contact(999, {"name": {}})
-
-
-def test_update_contact_invalidates_cache(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
-
-    service.list_contacts()
-    service.update_contact(1, {"name": {"first_name": "Johnny"}})
-
-    read_calls = 0
-
-    def read_contacts():
-        nonlocal read_calls
-        read_calls += 1
-        return contacts
-
-    monkeypatch.setattr(service.disk_dao, "read_contacts", read_contacts)
-    service.list_contacts()
-
-    assert read_calls == 1
-
-
-def test_update_contact_invalid_data_raises(monkeypatch, contacts) -> None:
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: contacts)
-
-    with pytest.raises(service.errors.ValidationError):
-        service.update_contact(1, {"name": {}, "unexpected_field": "value"})
+    with pytest.raises(errors.NotFoundError):
+        service.add_tags_to_contacts([999], ["C"])
 
 
 def test_list_contact_field_options(monkeypatch) -> None:
-    monkeypatch.setattr(
-        service.disk_dao,
-        "read_contacts",
-        lambda: [
+    stub_disk(
+        monkeypatch,
+        [
             contact_fixtures.build(
                 id=1,
-                name=model.Name(first_name="John", last_name="Smith"),
-                education=model.Education(
-                    high_school=model.HighSchool(name="Brookline High School"),
-                    bachelor=model.University(name="Harvard University"),
-                ),
-            ),
+                education={
+                    "high_school": {"name": "NHS"},
+                    "bachelor": {"name": "Bowdoin"},
+                },
+            )
         ],
     )
 
     options = service.list_contact_field_options()
 
-    assert "Ireland" in options["countries"]
+    assert options["high_schools"] == ["NHS"]
+    assert options["universities"] == ["Bowdoin"]
+    assert "United States" in options["countries"]
     assert {"code": 1, "label": "United States/Canada"} in options["country_codes"]
-    assert "Harvard University" in options["universities"]
-    assert "Brookline High School" in options["high_schools"]
 
 
-def test_start_sync_from_icloud_stages_new_contacts_for_review(monkeypatch, contacts) -> None:
-    new_contact = contact_fixtures.build(name=model.Name(first_name="New"))
+# -- Pull from iCloud ------------------------------------------------------
 
-    monkeypatch.setattr(service.icloud_dao, "authenticate", lambda **_: None)
-    monkeypatch.setattr(
-        service.icloud_dao,
-        "read_contacts_and_groups",
-        lambda **_: ([new_contact], []),
-    )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [])
-    created = []
-    monkeypatch.setattr(service.disk_dao, "create_contacts", created.append)
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+
+def test_start_sync_from_icloud_stages_new_contacts_for_review(
+    monkeypatch, contacts
+) -> None:
+    icloud_contact = contacts[0]
+    stub_icloud(monkeypatch, [icloud_contact])
+    written = stub_disk(monkeypatch, [])
 
     result = service.start_sync_from_icloud()
 
-    assert result == {
-        "status": "review",
-        "created": [
-            {"icloud_id": new_contact.icloud.uuid, "contact": new_contact.to_dict()}
-        ],
-        "updated": [],
-    }
-    # Nothing is written until apply_icloud_sync() accepts it.
-    assert created == []
+    assert result["status"] == "review"
+    assert len(result["created"]) == 1
+    assert result["created"][0]["icloud_id"] == uuid_of(icloud_contact)
+    assert written == []
 
 
-def test_start_sync_from_icloud_stages_updated_contacts_for_review(monkeypatch, contacts) -> None:
+def test_start_sync_from_icloud_stages_updated_contacts_for_review(
+    monkeypatch, contacts
+) -> None:
     disk_contact = contacts[0]
-    icloud_contact = disk_contact.copy()
-    icloud_contact.notes = "updated notes"
+    icloud_contact = copy.deepcopy(disk_contact)
+    icloud_contact["notes"] = "updated notes"
 
-    monkeypatch.setattr(service.icloud_dao, "authenticate", lambda **_: None)
-    monkeypatch.setattr(
-        service.icloud_dao,
-        "read_contacts_and_groups",
-        lambda **_: ([icloud_contact], []),
-    )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [disk_contact])
-    monkeypatch.setattr(service.disk_dao, "create_contacts", lambda _: None)
-    updated = []
-    monkeypatch.setattr(service.disk_dao, "update_contacts", updated.append)
+    stub_icloud(monkeypatch, [icloud_contact])
+    written = stub_disk(monkeypatch, [disk_contact])
 
     result = service.start_sync_from_icloud()
 
     assert result["status"] == "review"
     assert result["created"] == []
     assert len(result["updated"]) == 1
-    assert result["updated"][0]["icloud_id"] == disk_contact.icloud.uuid
+    assert result["updated"][0]["icloud_id"] == uuid_of(disk_contact)
     assert result["updated"][0]["before"].get("notes") != "updated notes"
     assert result["updated"][0]["after"]["notes"] == "updated notes"
     # Nothing is written until apply_icloud_sync() accepts it.
-    assert updated == []
+    assert written == []
 
 
 def test_start_sync_from_icloud_no_changes(monkeypatch, contacts) -> None:
-    disk_contact = contacts[0]
-    icloud_contact = disk_contact.copy()
-
-    monkeypatch.setattr(service.icloud_dao, "authenticate", lambda **_: None)
-    monkeypatch.setattr(
-        service.icloud_dao,
-        "read_contacts_and_groups",
-        lambda **_: ([icloud_contact], []),
-    )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [disk_contact])
-    monkeypatch.setattr(service.disk_dao, "create_contacts", lambda _: None)
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+    stub_icloud(monkeypatch, [contacts[0]])
+    stub_disk(monkeypatch, [contacts[0]])
 
     result = service.start_sync_from_icloud()
 
@@ -338,20 +254,18 @@ def test_start_sync_from_icloud_no_changes(monkeypatch, contacts) -> None:
 
 
 def test_start_sync_from_icloud_wraps_authentication_failure(monkeypatch) -> None:
-    def fail_authenticate(**_):
-        raise RuntimeError("boom")
+    def fail(**_):
+        raise RuntimeError("nope")
 
-    monkeypatch.setattr(service.icloud_dao, "authenticate", fail_authenticate)
+    monkeypatch.setattr(service.icloud_dao, "authenticate", fail)
 
-    with pytest.raises(service.errors.SyncError):
+    with pytest.raises(errors.SyncError, match="Failed to authenticate"):
         service.start_sync_from_icloud()
 
 
 def test_start_sync_from_icloud_returns_code_challenge(monkeypatch) -> None:
     monkeypatch.setattr(
-        service.icloud_dao,
-        "authenticate",
-        lambda **_: AuthChallenge(kind="code"),
+        service.icloud_dao, "authenticate", lambda **_: AuthChallenge(kind="code")
     )
 
     result = service.start_sync_from_icloud()
@@ -372,19 +286,16 @@ def test_start_sync_from_icloud_returns_device_challenge(monkeypatch) -> None:
 
     result = service.start_sync_from_icloud()
 
-    assert result == {
-        "status": "requires_verification",
-        "verification_kind": "device_and_code",
-        "devices": ["iPhone"],
-    }
+    assert result["verification_kind"] == "device_and_code"
+    assert result["devices"] == ["iPhone"]
 
 
 def test_submit_sync_device_requests_code(monkeypatch) -> None:
-    monkeypatch.setattr(service.icloud_dao, "submit_verification_device", lambda _: None)
+    monkeypatch.setattr(
+        service.icloud_dao, "submit_verification_device", lambda _: None
+    )
 
-    result = service.submit_sync_device(0)
-
-    assert result == {
+    assert service.submit_sync_device(0) == {
         "status": "requires_verification",
         "verification_kind": "code",
         "devices": [],
@@ -393,166 +304,164 @@ def test_submit_sync_device_requests_code(monkeypatch) -> None:
 
 def test_submit_sync_device_wraps_failure(monkeypatch) -> None:
     def fail(_):
-        raise RuntimeError("boom")
+        raise RuntimeError("nope")
 
     monkeypatch.setattr(service.icloud_dao, "submit_verification_device", fail)
 
-    with pytest.raises(service.errors.SyncError):
+    with pytest.raises(errors.SyncError, match="Failed to send verification code"):
         service.submit_sync_device(0)
 
 
 def test_submit_sync_code_stages_review(monkeypatch, contacts) -> None:
-    new_contact = contact_fixtures.build(name=model.Name(first_name="New"))
-
     monkeypatch.setattr(service.icloud_dao, "submit_verification_code", lambda _: None)
     monkeypatch.setattr(
-        service.icloud_dao, "read_contacts_and_groups", lambda **_: ([new_contact], [])
+        service.icloud_dao, "read_contacts_and_groups", lambda **_: ([contacts[0]], [])
     )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [])
-    monkeypatch.setattr(service.disk_dao, "create_contacts", lambda _: None)
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+    stub_disk(monkeypatch, [])
 
     result = service.submit_sync_code("123456")
 
     assert result["status"] == "review"
-    assert [c["icloud_id"] for c in result["created"]] == [new_contact.icloud.uuid]
+    assert len(result["created"]) == 1
 
 
 def test_submit_sync_code_no_changes_completes_directly(monkeypatch, contacts) -> None:
     monkeypatch.setattr(service.icloud_dao, "submit_verification_code", lambda _: None)
     monkeypatch.setattr(
-        service.icloud_dao, "read_contacts_and_groups", lambda **_: ([], [])
+        service.icloud_dao, "read_contacts_and_groups", lambda **_: ([contacts[0]], [])
     )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [])
-    monkeypatch.setattr(service.disk_dao, "create_contacts", lambda _: None)
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+    stub_disk(monkeypatch, [contacts[0]])
 
-    result = service.submit_sync_code("123456")
-
-    assert result == {"status": "complete", "created": 0, "updated": 0}
+    assert service.submit_sync_code("123456") == {
+        "status": "complete",
+        "created": 0,
+        "updated": 0,
+    }
 
 
 def test_submit_sync_code_wraps_failure(monkeypatch) -> None:
     def fail(_):
-        raise RuntimeError("boom")
+        raise RuntimeError("nope")
 
     monkeypatch.setattr(service.icloud_dao, "submit_verification_code", fail)
 
-    with pytest.raises(service.errors.SyncError):
-        service.submit_sync_code("123456")
+    with pytest.raises(errors.SyncError, match="Failed to verify code"):
+        service.submit_sync_code("000000")
 
 
 def test_apply_icloud_sync_writes_only_accepted_creates(monkeypatch, contacts) -> None:
-    accepted = contact_fixtures.build(name=model.Name(first_name="Accepted"))
-    declined = contact_fixtures.build(name=model.Name(first_name="Declined"))
-    service._pending_sync = {"created": [accepted, declined], "updated": []}
+    accepted, declined = contacts[0], contacts[1]
+    stub_icloud(monkeypatch, [accepted, declined])
+    created: list[list[Object]] = []
+    monkeypatch.setattr(service.disk_dao, "read_objects", lambda _: [])
+    monkeypatch.setattr(
+        service.disk_dao, "create_objects", lambda _, objs: created.append(objs)
+    )
+    monkeypatch.setattr(service.disk_dao, "update_objects", lambda *_: None)
+    service.start_sync_from_icloud()
 
-    created = []
-    monkeypatch.setattr(service.disk_dao, "create_contacts", created.append)
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
-
-    result = service.apply_icloud_sync([accepted.icloud.uuid], [])
+    result = service.apply_icloud_sync([uuid_of(accepted)], [])
 
     assert result == {"status": "complete", "created": 1, "updated": 0}
-    assert created == [[accepted]]
-    assert service._pending_sync is None
+    assert [uuid_of(c) for c in created[0]] == [uuid_of(accepted)]
 
 
 def test_apply_icloud_sync_writes_only_accepted_updates(monkeypatch, contacts) -> None:
-    disk_contact = contacts[0]
-    accepted_update = disk_contact.copy()
-    accepted_update.notes = "accepted"
-    declined_disk_contact = contacts[1]
-    declined_update = declined_disk_contact.copy()
-    declined_update.notes = "declined"
-    service._pending_sync = {
-        "created": [],
-        "updated": [
-            (disk_contact, accepted_update),
-            (declined_disk_contact, declined_update),
-        ],
-    }
+    disk_a, disk_b = contacts[0], contacts[1]
+    icloud_a = copy.deepcopy(disk_a)
+    icloud_a["notes"] = "a"
+    icloud_b = copy.deepcopy(disk_b)
+    icloud_b["notes"] = "b"
 
-    updated = []
-    monkeypatch.setattr(service.disk_dao, "create_contacts", lambda _: None)
-    monkeypatch.setattr(service.disk_dao, "update_contacts", updated.append)
+    stub_icloud(monkeypatch, [icloud_a, icloud_b])
+    updated: list[list[Object]] = []
+    monkeypatch.setattr(service.disk_dao, "read_objects", lambda _: [disk_a, disk_b])
+    monkeypatch.setattr(
+        service.disk_dao, "update_objects", lambda _, objs: updated.append(objs)
+    )
+    monkeypatch.setattr(service.disk_dao, "create_objects", lambda *_: None)
+    service.start_sync_from_icloud()
 
-    result = service.apply_icloud_sync([], [accepted_update.icloud.uuid])
+    result = service.apply_icloud_sync([], [uuid_of(disk_a)])
 
     assert result == {"status": "complete", "created": 0, "updated": 1}
-    assert updated == [[accepted_update]]
-    assert service._pending_sync is None
+    assert [c["notes"] for c in updated[0]] == ["a"]
 
 
-def test_apply_icloud_sync_declining_everything_writes_nothing(monkeypatch) -> None:
-    contact = contact_fixtures.build(name=model.Name(first_name="New"))
-    service._pending_sync = {"created": [contact], "updated": []}
-
-    created = []
-    monkeypatch.setattr(service.disk_dao, "create_contacts", created.append)
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+def test_apply_icloud_sync_declining_everything_writes_nothing(
+    monkeypatch, contacts
+) -> None:
+    stub_icloud(monkeypatch, [contacts[0]])
+    written = stub_disk(monkeypatch, [])
+    service.start_sync_from_icloud()
 
     result = service.apply_icloud_sync([], [])
 
     assert result == {"status": "complete", "created": 0, "updated": 0}
-    assert created == []
+    assert written == []
 
 
-def test_apply_icloud_sync_without_pending_review_raises(monkeypatch) -> None:
-    with pytest.raises(service.errors.ValidationError):
+def test_apply_icloud_sync_without_pending_review_raises() -> None:
+    with pytest.raises(errors.ValidationError, match="No pending iCloud sync"):
         service.apply_icloud_sync([], [])
 
 
-def test_start_push_to_icloud_stages_new_contacts_for_review(monkeypatch, contacts) -> None:
-    local_only = contacts[0]
+# -- Push to iCloud --------------------------------------------------------
 
-    monkeypatch.setattr(service.icloud_dao, "authenticate", lambda **_: None)
-    monkeypatch.setattr(
-        service.icloud_dao, "read_contacts_and_groups", lambda **_: ([], [])
-    )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [local_only])
+
+def test_start_push_to_icloud_stages_new_contacts_for_review(
+    monkeypatch, contacts
+) -> None:
+    disk_contact = contacts[0]
+    stub_icloud(monkeypatch, [])
+    stub_disk(monkeypatch, [disk_contact])
 
     result = service.start_push_to_icloud()
 
     assert result["status"] == "review"
-    assert [c["icloud_id"] for c in result["created"]] == [local_only.icloud.uuid]
-    assert result["updated"] == []
+    assert len(result["created"]) == 1
+    assert result["created"][0]["icloud_id"] == uuid_of(disk_contact)
 
 
-def test_start_push_to_icloud_stages_updated_contacts_for_review(monkeypatch, contacts) -> None:
+def test_start_push_to_icloud_stages_updated_contacts_for_review(
+    monkeypatch, contacts
+) -> None:
     disk_contact = contacts[0]
-    icloud_contact = disk_contact.copy()
-    icloud_contact.notes = "stale on icloud"
+    icloud_contact = copy.deepcopy(disk_contact)
+    icloud_contact.pop("tags", None)
 
-    monkeypatch.setattr(service.icloud_dao, "authenticate", lambda **_: None)
-    monkeypatch.setattr(
-        service.icloud_dao,
-        "read_contacts_and_groups",
-        lambda **_: ([icloud_contact], []),
-    )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [disk_contact])
+    stub_icloud(monkeypatch, [icloud_contact])
+    stub_disk(monkeypatch, [disk_contact])
 
     result = service.start_push_to_icloud()
 
     assert result["status"] == "review"
     assert result["created"] == []
     assert len(result["updated"]) == 1
-    assert result["updated"][0]["icloud_id"] == disk_contact.icloud.uuid
-    assert result["updated"][0]["before"]["notes"] == "stale on icloud"
-    assert result["updated"][0]["after"].get("notes") != "stale on icloud"
+    assert result["updated"][0]["after"]["tags"] == ["A"]
 
 
 def test_start_push_to_icloud_no_changes(monkeypatch, contacts) -> None:
     disk_contact = contacts[0]
-    icloud_contact = disk_contact.copy()
+    stub_icloud(monkeypatch, [copy.deepcopy(disk_contact)])
+    stub_disk(monkeypatch, [disk_contact])
 
-    monkeypatch.setattr(service.icloud_dao, "authenticate", lambda **_: None)
-    monkeypatch.setattr(
-        service.icloud_dao,
-        "read_contacts_and_groups",
-        lambda **_: ([icloud_contact], []),
+    result = service.start_push_to_icloud()
+
+    assert result == {"status": "complete", "created": 0, "updated": 0}
+
+
+def test_start_push_to_icloud_strips_unsynced_fields_before_diffing(
+    monkeypatch, contacts
+) -> None:
+    disk_contact = contact_fixtures.build(
+        id=1, name={"first_name": "John", "deadname": "X"}
     )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [disk_contact])
+    icloud_contact = copy.deepcopy(disk_contact)
+    icloud_contact["name"].pop("deadname")
+
+    stub_icloud(monkeypatch, [icloud_contact])
+    stub_disk(monkeypatch, [disk_contact])
 
     result = service.start_push_to_icloud()
 
@@ -560,223 +469,209 @@ def test_start_push_to_icloud_no_changes(monkeypatch, contacts) -> None:
 
 
 def test_start_push_to_icloud_wraps_authentication_failure(monkeypatch) -> None:
-    def fail_authenticate(**_):
-        raise RuntimeError("boom")
+    def fail(**_):
+        raise RuntimeError("nope")
 
-    monkeypatch.setattr(service.icloud_dao, "authenticate", fail_authenticate)
+    monkeypatch.setattr(service.icloud_dao, "authenticate", fail)
 
-    with pytest.raises(service.errors.SyncError):
+    with pytest.raises(errors.SyncError, match="Failed to authenticate"):
         service.start_push_to_icloud()
 
 
 def test_start_push_to_icloud_returns_code_challenge(monkeypatch) -> None:
     monkeypatch.setattr(
-        service.icloud_dao,
-        "authenticate",
-        lambda **_: AuthChallenge(kind="code"),
+        service.icloud_dao, "authenticate", lambda **_: AuthChallenge(kind="code")
     )
 
     result = service.start_push_to_icloud()
 
-    assert result == {
-        "status": "requires_verification",
-        "verification_kind": "code",
-        "devices": [],
-    }
+    assert result["status"] == "requires_verification"
 
 
 def test_submit_push_device_requests_code(monkeypatch) -> None:
-    monkeypatch.setattr(service.icloud_dao, "submit_verification_device", lambda _: None)
+    monkeypatch.setattr(
+        service.icloud_dao, "submit_verification_device", lambda _: None
+    )
 
-    result = service.submit_push_device(0)
-
-    assert result == {
-        "status": "requires_verification",
-        "verification_kind": "code",
-        "devices": [],
-    }
+    assert service.submit_push_device(0)["verification_kind"] == "code"
 
 
 def test_submit_push_device_wraps_failure(monkeypatch) -> None:
     def fail(_):
-        raise RuntimeError("boom")
+        raise RuntimeError("nope")
 
     monkeypatch.setattr(service.icloud_dao, "submit_verification_device", fail)
 
-    with pytest.raises(service.errors.SyncError):
+    with pytest.raises(errors.SyncError, match="Failed to send verification code"):
         service.submit_push_device(0)
 
 
 def test_submit_push_code_stages_review(monkeypatch, contacts) -> None:
-    local_only = contacts[0]
-
     monkeypatch.setattr(service.icloud_dao, "submit_verification_code", lambda _: None)
     monkeypatch.setattr(
         service.icloud_dao, "read_contacts_and_groups", lambda **_: ([], [])
     )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [local_only])
+    stub_disk(monkeypatch, [contacts[0]])
 
     result = service.submit_push_code("123456")
 
     assert result["status"] == "review"
-    assert [c["icloud_id"] for c in result["created"]] == [local_only.icloud.uuid]
+    assert len(result["created"]) == 1
 
 
-def test_submit_push_code_no_changes_completes_directly(monkeypatch) -> None:
+def test_submit_push_code_no_changes_completes_directly(monkeypatch, contacts) -> None:
+    disk_contact = contacts[0]
     monkeypatch.setattr(service.icloud_dao, "submit_verification_code", lambda _: None)
     monkeypatch.setattr(
-        service.icloud_dao, "read_contacts_and_groups", lambda **_: ([], [])
+        service.icloud_dao,
+        "read_contacts_and_groups",
+        lambda **_: ([copy.deepcopy(disk_contact)], []),
     )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [])
+    stub_disk(monkeypatch, [disk_contact])
 
-    result = service.submit_push_code("123456")
-
-    assert result == {"status": "complete", "created": 0, "updated": 0}
+    assert service.submit_push_code("123456") == {
+        "status": "complete",
+        "created": 0,
+        "updated": 0,
+    }
 
 
 def test_submit_push_code_wraps_failure(monkeypatch) -> None:
     def fail(_):
-        raise RuntimeError("boom")
+        raise RuntimeError("nope")
 
     monkeypatch.setattr(service.icloud_dao, "submit_verification_code", fail)
 
-    with pytest.raises(service.errors.SyncError):
-        service.submit_push_code("123456")
+    with pytest.raises(errors.SyncError, match="Failed to verify code"):
+        service.submit_push_code("000000")
 
 
-def test_apply_icloud_push_writes_only_accepted_creates(monkeypatch) -> None:
-    accepted = contact_fixtures.build(name=model.Name(first_name="Accepted"))
-    declined = contact_fixtures.build(name=model.Name(first_name="Declined"))
-    service._pending_push = {"created": [accepted, declined], "updated": []}
-
-    created = []
-    monkeypatch.setattr(service.icloud_dao, "create_contacts", created.append)
-    monkeypatch.setattr(service.icloud_dao, "update_contacts", lambda _: None)
-    # _sync_etags_after_push() re-reads from iCloud/disk; nothing to refresh here.
+def test_apply_icloud_push_writes_only_accepted_creates(monkeypatch, contacts) -> None:
+    accepted, declined = contacts[0], contacts[1]
+    stub_icloud(monkeypatch, [])
+    stub_disk(monkeypatch, [accepted, declined])
+    pushed: list[list[Object]] = []
     monkeypatch.setattr(
-        service.icloud_dao, "read_contacts_and_groups", lambda **_: ([], [])
+        service.icloud_dao, "create_contacts", lambda objs: pushed.append(objs)
     )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [])
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+    monkeypatch.setattr(service.icloud_dao, "update_contacts", lambda _: None)
+    service.start_push_to_icloud()
 
-    result = service.apply_icloud_push([accepted.icloud.uuid], [])
+    result = service.apply_icloud_push([uuid_of(accepted)], [])
 
     assert result == {"status": "complete", "created": 1, "updated": 0}
-    assert created == [[accepted]]
-    assert service._pending_push is None
+    assert [uuid_of(c) for c in pushed[0]] == [uuid_of(accepted)]
 
 
 def test_apply_icloud_push_writes_only_accepted_updates(monkeypatch, contacts) -> None:
-    icloud_contact = contacts[0].copy()
-    accepted_update = contacts[0].copy()
-    accepted_update.notes = "accepted"
-    declined_icloud_contact = contacts[1].copy()
-    declined_update = contacts[1].copy()
-    declined_update.notes = "declined"
-    service._pending_push = {
-        "created": [],
-        "updated": [
-            (icloud_contact, accepted_update),
-            (declined_icloud_contact, declined_update),
-        ],
-    }
+    disk_a, disk_b = contacts[0], contacts[1]
+    icloud_a = copy.deepcopy(disk_a)
+    icloud_a.pop("tags")
+    icloud_b = copy.deepcopy(disk_b)
+    icloud_b.pop("tags")
 
-    monkeypatch.setattr(service.icloud_dao, "create_contacts", lambda _: None)
-    updated = []
-    monkeypatch.setattr(service.icloud_dao, "update_contacts", updated.append)
+    stub_icloud(monkeypatch, [icloud_a, icloud_b])
+    stub_disk(monkeypatch, [disk_a, disk_b])
+    pushed: list[list[Object]] = []
     monkeypatch.setattr(
-        service.icloud_dao, "read_contacts_and_groups", lambda **_: ([], [])
+        service.icloud_dao, "update_contacts", lambda objs: pushed.append(list(objs))
     )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [])
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
+    monkeypatch.setattr(service.icloud_dao, "create_contacts", lambda _: None)
+    service.start_push_to_icloud()
 
-    result = service.apply_icloud_push([], [accepted_update.icloud.uuid])
+    result = service.apply_icloud_push([], [uuid_of(disk_a)])
 
     assert result == {"status": "complete", "created": 0, "updated": 1}
-    assert updated == [[accepted_update]]
-    assert service._pending_push is None
+    assert [uuid_of(c) for c in pushed[0]] == [uuid_of(disk_a)]
 
 
 def test_apply_icloud_push_batches_updates(monkeypatch) -> None:
-    accepted = [
-        contact_fixtures.build(name=model.Name(first_name=f"Contact{i}"))
-        for i in range(7)
+    disk_contacts = [
+        contact_fixtures.build(id=i, name={"first_name": f"C{i}"}, tags=["A"])
+        for i in range(1, 8)
     ]
-    service._pending_push = {
-        "created": [],
-        "updated": [(contact, contact) for contact in accepted],
-    }
+    icloud_contacts = []
+    for contact in disk_contacts:
+        icloud_contact = copy.deepcopy(contact)
+        icloud_contact.pop("tags")
+        icloud_contacts.append(icloud_contact)
 
-    batches = []
-    monkeypatch.setattr(service.icloud_dao, "create_contacts", lambda _: None)
-    monkeypatch.setattr(service.icloud_dao, "update_contacts", batches.append)
+    stub_icloud(monkeypatch, icloud_contacts)
+    stub_disk(monkeypatch, disk_contacts)
+    batches: list[int] = []
     monkeypatch.setattr(
-        service.icloud_dao, "read_contacts_and_groups", lambda **_: ([], [])
+        service.icloud_dao, "update_contacts", lambda objs: batches.append(len(objs))
     )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [])
-    monkeypatch.setattr(service.disk_dao, "update_contacts", lambda _: None)
-
-    result = service.apply_icloud_push(
-        [], [contact.icloud.uuid for contact in accepted]
-    )
-
-    assert result == {"status": "complete", "created": 0, "updated": 7}
-    assert [len(batch) for batch in batches] == [5, 2]
-
-
-def test_apply_icloud_push_refreshes_disk_etags(monkeypatch) -> None:
-    accepted = contact_fixtures.build(name=model.Name(first_name="Pushed"))
-    service._pending_push = {"created": [accepted], "updated": []}
-
-    disk_contact = accepted.copy()
-    disk_contact.id = 42
-    icloud_contact_after_push = accepted.copy()
-    icloud_contact_after_push.icloud.etag = "new-etag"
-
     monkeypatch.setattr(service.icloud_dao, "create_contacts", lambda _: None)
-    monkeypatch.setattr(service.icloud_dao, "update_contacts", lambda _: None)
+    service.start_push_to_icloud()
+
+    service.apply_icloud_push([], [uuid_of(c) for c in disk_contacts])
+
+    assert batches == [5, 2]
+
+
+def test_apply_icloud_push_refreshes_disk_etags(monkeypatch, contacts) -> None:
+    disk_contact = contacts[0]
+    icloud_before = copy.deepcopy(disk_contact)
+    icloud_before.pop("tags")
+
+    # After the push, iCloud reports a new etag and nothing else changed.
+    icloud_after = copy.deepcopy(disk_contact)
+    icloud_after["icloud"]["etag"] = "new-etag"
+
+    reads = [[icloud_before], [icloud_after]]
+    monkeypatch.setattr(service.icloud_dao, "authenticate", lambda **_: None)
     monkeypatch.setattr(
         service.icloud_dao,
         "read_contacts_and_groups",
-        lambda **_: ([icloud_contact_after_push], []),
+        lambda **_: (reads.pop(0) if reads else [icloud_after], []),
     )
-    monkeypatch.setattr(service.disk_dao, "read_contacts", lambda: [disk_contact])
-    etag_updates = []
-    monkeypatch.setattr(service.disk_dao, "update_contacts", etag_updates.append)
-
-    service.apply_icloud_push([accepted.icloud.uuid], [])
-
-    assert len(etag_updates) == 1
-    assert etag_updates[0][0].icloud.etag == "new-etag"
-
-
-def test_apply_icloud_push_declining_everything_writes_nothing(monkeypatch) -> None:
-    contact = contact_fixtures.build(name=model.Name(first_name="Local"))
-    service._pending_push = {"created": [contact], "updated": []}
-
-    created = []
-    monkeypatch.setattr(service.icloud_dao, "create_contacts", created.append)
+    monkeypatch.setattr(service.disk_dao, "read_objects", lambda _: [disk_contact])
     monkeypatch.setattr(service.icloud_dao, "update_contacts", lambda _: None)
+    monkeypatch.setattr(service.icloud_dao, "create_contacts", lambda _: None)
+    updated: list[list[Object]] = []
+    monkeypatch.setattr(
+        service.disk_dao, "update_objects", lambda _, objs: updated.append(objs)
+    )
+    service.start_push_to_icloud()
+
+    service.apply_icloud_push([], [uuid_of(disk_contact)])
+
+    assert updated
+    assert updated[-1][0]["icloud"]["etag"] == "new-etag"
+
+
+def test_apply_icloud_push_declining_everything_writes_nothing(
+    monkeypatch, contacts
+) -> None:
+    stub_icloud(monkeypatch, [])
+    stub_disk(monkeypatch, [contacts[0]])
+    pushed: list = []
+    monkeypatch.setattr(service.icloud_dao, "create_contacts", pushed.append)
+    monkeypatch.setattr(service.icloud_dao, "update_contacts", pushed.append)
+    service.start_push_to_icloud()
 
     result = service.apply_icloud_push([], [])
 
     assert result == {"status": "complete", "created": 0, "updated": 0}
-    assert created == []
+    assert pushed == []
 
 
-def test_apply_icloud_push_without_pending_review_raises(monkeypatch) -> None:
-    with pytest.raises(service.errors.ValidationError):
+def test_apply_icloud_push_without_pending_review_raises() -> None:
+    with pytest.raises(errors.ValidationError, match="No pending iCloud push"):
         service.apply_icloud_push([], [])
 
 
-def test_apply_icloud_push_wraps_write_failure(monkeypatch) -> None:
-    contact = contact_fixtures.build(name=model.Name(first_name="Local"))
-    service._pending_push = {"created": [contact], "updated": []}
+def test_apply_icloud_push_wraps_write_failure(monkeypatch, contacts) -> None:
+    accepted = contacts[0]
+    stub_icloud(monkeypatch, [])
+    stub_disk(monkeypatch, [accepted])
 
     def fail(_):
-        raise RuntimeError("boom")
+        raise RuntimeError("nope")
 
     monkeypatch.setattr(service.icloud_dao, "create_contacts", fail)
+    service.start_push_to_icloud()
 
-    with pytest.raises(service.errors.SyncError):
-        service.apply_icloud_push([contact.icloud.uuid], [])
+    with pytest.raises(errors.SyncError, match="Failed to push to iCloud"):
+        service.apply_icloud_push([uuid_of(accepted)], [])

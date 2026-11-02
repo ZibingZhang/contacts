@@ -11,6 +11,9 @@ from contacts import model
 from contacts.common import error
 from contacts.utils import dataclasses_utils
 
+# A date string, where unknown parts are masked: "1990-XX-XX", "XXXX-07-04".
+PATTERN = re.compile(r"^[0-9X]{4}-[0-9X]{2}-[0-9X]{2}$")
+
 
 def encoder(date: model.Date | dict | None) -> str | None:
     """An encoder for a date field.
@@ -44,7 +47,7 @@ def decoder(date: str | None) -> model.Date | None:
 
     if date is None:
         return None
-    if not re.match(r"^[0-9X]{4}-[0-9X]{2}-[0-9X]{2}$", date):
+    if not PATTERN.match(date):
         raise error.DecodingError(date)
 
     year_str = date[:4]

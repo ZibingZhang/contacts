@@ -23,6 +23,22 @@ class Date(dataclasses_utils.DataClassJsonMixin):
 
 
 @dataclasses.dataclass(repr=False)
+class PhotoCrop(dataclasses_utils.DataClassJsonMixin):
+    height: int
+    width: int
+    x: int
+    y: int
+
+
+@dataclasses.dataclass(repr=False)
+class Photo(dataclasses_utils.DataClassJsonMixin):
+    url: str
+    crop: PhotoCrop | None = None
+    signature: str | None = None
+    whitelisted: bool | None = None
+
+
+@dataclasses.dataclass(repr=False)
 class EmailAddress(dataclasses_utils.DataClassJsonMixin):
     field: str
     label: str
@@ -115,7 +131,7 @@ class ICloudContact(dataclasses_utils.DataClassJsonMixin):
     phoneticCompanyName: str | None = None
     phoneticFirstName: str | None = None
     phoneticLastName: str | None = None
-    photo: model.ICloudPhoto | None = None
+    photo: Photo | None = None
     prefix: str | None = None
     profiles: list[Profile] | None = None
     relatedNames: list[RelatedName] | None = None

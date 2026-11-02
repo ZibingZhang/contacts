@@ -9,6 +9,8 @@ __all__ = [
     "IMField",
     "IM",
     "Phone",
+    "Photo",
+    "PhotoCrop",
     "Profile",
     "RelatedName",
     "StreetAddressField",
@@ -24,6 +26,8 @@ EmailAddress = icloud_contact.EmailAddress
 IMField = icloud_contact.IMField
 IM = icloud_contact.IM
 Phone = icloud_contact.Phone
+Photo = icloud_contact.Photo
+PhotoCrop = icloud_contact.PhotoCrop
 Profile = icloud_contact.Profile
 RelatedName = icloud_contact.RelatedName
 StreetAddressField = icloud_contact.StreetAddressField

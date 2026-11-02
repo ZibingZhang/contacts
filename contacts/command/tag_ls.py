@@ -1,12 +1,13 @@
 """Command to list all tags."""
 from __future__ import annotations
 
+from contacts import model
 from contacts.dao import disk_dao
 from contacts.utils import contact_utils
 
 
 def run(tags: list[str]) -> None:
-    contacts = disk_dao.read_contacts()
+    contacts = disk_dao.read_objects(model.TYPE_CONTACT)
 
     if not tags:
         all_tags = contact_utils.extract_tags(contacts)
@@ -18,7 +19,8 @@ def run(tags: list[str]) -> None:
     else:
         count = 0
         for contact in contacts:
-            if contact.tags and all(tag in contact.tags for tag in tags):
+            contact_tags = contact.get("tags")
+            if contact_tags and all(tag in contact_tags for tag in tags):
                 print(contact_utils.build_name_and_tags_str(contact))
                 count += 1
 

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchContacts,
   fetchTags,
-  fetchGroups,
-  refreshGroups,
+  fetchLists,
+  fetchAllListMemberIds,
+  refreshLists,
+  fetchSchemas,
   batchAddTags,
   startSync,
   submitSyncDevice,
@@ -16,15 +18,22 @@ import {
   apiBaseUrl,
   ApiError,
 } from "./api";
-import type { Contact, Group, TagCount, SyncRequiresVerification, SyncReview, SyncResult } from "./types";
+import type {
+  Contact,
+  ListObject,
+  TagCount,
+  SyncRequiresVerification,
+  SyncReview,
+  SyncResult,
+} from "./types";
 import { contactLetter } from "./search";
 import { sameFilter, type SelectedFilter } from "./filters";
 import { useDebouncedValue, useFilteredContactIds, isTypingTarget } from "./hooks";
 import { Sidebar, type ListStatus } from "./components/Sidebar";
-import { GroupsNav } from "./components/GroupsNav";
-import { GroupList } from "./components/GroupList";
-import { GroupDetail } from "./components/GroupDetail";
-import { GroupForm } from "./components/GroupForm";
+import { ListsNav } from "./components/ListsNav";
+import { ListsPanel } from "./components/ListsPanel";
+import { ListDetail } from "./components/ListDetail";
+import { ListForm } from "./components/ListForm";
 import { TopBar, type AppView } from "./components/TopBar";
 import { ContactDetail } from "./components/ContactDetail";
 import { BirthdayView } from "./components/BirthdayView";
@@ -46,6 +55,15 @@ function networkErrorMessage(error: unknown): string {
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "contacts.sidebar.collapsed";
 
+/** JSON object keys are strings, so turn them back into list ids. */
+function parseMemberIds(raw: Record<string, number[]>): Record<number, number[]> {
+  const parsed: Record<number, number[]> = {};
+  for (const [listId, ids] of Object.entries(raw)) {
+    parsed[Number(listId)] = ids;
+  }
+  return parsed;
+}
+
 function readStoredSidebarCollapsed(): boolean {
   return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
 }
@@ -54,7 +72,7 @@ function paramsFromLocation(): {
   query: string;
   filters: SelectedFilter[];
   contactId: number | null;
-  groupId: number | null;
+  listId: number | null;
   view: AppView;
 } {
   const params = new URLSearchParams(window.location.search);
@@ -66,16 +84,16 @@ function paramsFromLocation(): {
   }
   const contactParam = params.get("contact");
   const contactId = contactParam !== null && /^\d+$/.test(contactParam) ? Number(contactParam) : null;
-  const groupParam = params.get("group");
-  const groupId = groupParam !== null && /^\d+$/.test(groupParam) ? Number(groupParam) : null;
+  const listParam = params.get("list");
+  const listId = listParam !== null && /^\d+$/.test(listParam) ? Number(listParam) : null;
   const viewParam = params.get("view");
-  const view: AppView = viewParam === "groups" || viewParam === "birthdays" ? viewParam : "contacts";
+  const view: AppView = viewParam === "lists" || viewParam === "birthdays" ? viewParam : "contacts";
   return {
     query: params.get("q") ?? "",
     filters,
     view,
     contactId,
-    groupId,
+    listId,
   };
 }
 
@@ -94,10 +112,14 @@ const SYNC_API: Record<SyncDirection, SyncApi> = {
 export function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [groupsRefreshing, setGroupsRefreshing] = useState(false);
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(() => paramsFromLocation().groupId);
-  const [editingGroupId, setEditingGroupId] = useState<number | "new" | null>(null);
+  const [lists, setLists] = useState<ListObject[]>([]);
+  // List id -> its member object ids, loaded alongside the lists themselves
+  // since membership now lives in associations rather than on the list.
+  const [listMemberIds, setListMemberIds] = useState<Record<number, number[]>>({});
+  const [memberTypes, setMemberTypes] = useState<string[]>(["contact"]);
+  const [listsRefreshing, setListsRefreshing] = useState(false);
+  const [selectedListId, setSelectedListId] = useState<number | null>(() => paramsFromLocation().listId);
+  const [editingListId, setEditingListId] = useState<number | "new" | null>(null);
   const [view, setView] = useState<AppView>(() => paramsFromLocation().view);
   const [selectedFilters, setSelectedFilters] = useState<SelectedFilter[]>(() => paramsFromLocation().filters);
   const [searchQuery, setSearchQuery] = useState(() => paramsFromLocation().query);
@@ -130,11 +152,11 @@ export function App() {
   // changed while on the same contact" (replace, so typing doesn't spam
   // history).
   const syncedContactIdRef = useRef<number | null>(selectedContactId);
-  // Same idea as syncedContactIdRef, but for the selected group -- switching
-  // which group scopes/is shown pushes a history entry (like switching a
-  // mailbox folder), so back/forward moves between groups too.
-  const syncedGroupIdRef = useRef<number | null>(selectedGroupId);
-  // ...and for the top-level contacts/groups view itself.
+  // Same idea as syncedContactIdRef, but for the selected list -- switching
+  // which list scopes/is shown pushes a history entry (like switching a
+  // mailbox folder), so back/forward moves between lists too.
+  const syncedListIdRef = useRef<number | null>(selectedListId);
+  // ...and for the top-level contacts/lists view itself.
   const syncedViewRef = useRef<AppView>(view);
 
   useEffect(() => {
@@ -143,7 +165,7 @@ export function App() {
     fetchContacts()
       .then((data) => {
         if (cancelled) return;
-        setContacts(data.contacts);
+        setContacts(data.objects);
         setListStatus("ready");
       })
       .catch((error) => {
@@ -172,27 +194,54 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchGroups()
-      .then((data) => {
-        if (!cancelled) setGroups(data.groups);
+    Promise.all([fetchLists(), fetchAllListMemberIds()])
+      .then(([listsData, memberIdsData]) => {
+        if (cancelled) return;
+        setLists(listsData.objects);
+        setListMemberIds(parseMemberIds(memberIdsData.member_ids));
       })
       .catch(() => {
-        if (!cancelled) setGroups([]);
+        if (cancelled) return;
+        setLists([]);
+        setListMemberIds({});
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  async function handleRefreshGroups() {
-    setGroupsRefreshing(true);
+  // The member-type picker on the list form needs the available types.
+  useEffect(() => {
+    let cancelled = false;
+    fetchSchemas()
+      .then((data) => {
+        if (cancelled) return;
+        setMemberTypes(
+          data.schemas
+            .map((schema) => schema.name)
+            .filter((name) => name !== "schema" && name !== "association")
+            .sort()
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setMemberTypes(["contact"]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleRefreshLists() {
+    setListsRefreshing(true);
     try {
-      const data = await refreshGroups();
-      setGroups(data.groups);
+      const data = await refreshLists();
+      setLists(data.objects);
+      // Refreshing re-runs each query, so membership has to be re-read.
+      setListMemberIds(parseMemberIds((await fetchAllListMemberIds()).member_ids));
     } catch {
-      // Keep the existing group list if the refresh fails.
+      // Keep the existing lists if the refresh fails.
     } finally {
-      setGroupsRefreshing(false);
+      setListsRefreshing(false);
     }
   }
 
@@ -212,12 +261,12 @@ export function App() {
     } else {
       params.delete("contact");
     }
-    if (selectedGroupId !== null) {
-      params.set("group", String(selectedGroupId));
+    if (selectedListId !== null) {
+      params.set("list", String(selectedListId));
     } else {
-      params.delete("group");
+      params.delete("list");
     }
-    if (view === "groups" || view === "birthdays") {
+    if (view === "lists" || view === "birthdays") {
       params.set("view", view);
     } else {
       params.delete("view");
@@ -226,7 +275,7 @@ export function App() {
     const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ""}${window.location.hash}`;
     if (
       selectedContactId !== syncedContactIdRef.current ||
-      selectedGroupId !== syncedGroupIdRef.current ||
+      selectedListId !== syncedListIdRef.current ||
       view !== syncedViewRef.current
     ) {
       window.history.pushState(null, "", newUrl);
@@ -234,43 +283,43 @@ export function App() {
       window.history.replaceState(null, "", newUrl);
     }
     syncedContactIdRef.current = selectedContactId;
-    syncedGroupIdRef.current = selectedGroupId;
+    syncedListIdRef.current = selectedListId;
     syncedViewRef.current = view;
-  }, [searchQuery, selectedFilters, selectedContactId, selectedGroupId, view]);
+  }, [searchQuery, selectedFilters, selectedContactId, selectedListId, view]);
 
   // Restores search/filter/selection state when the user navigates with the
   // browser's back/forward buttons.
   useEffect(() => {
     function handlePopState() {
-      const { query, filters, contactId, groupId, view: poppedView } = paramsFromLocation();
+      const { query, filters, contactId, listId, view: poppedView } = paramsFromLocation();
       syncedContactIdRef.current = contactId;
-      syncedGroupIdRef.current = groupId;
+      syncedListIdRef.current = listId;
       syncedViewRef.current = poppedView;
       setSearchQuery(query);
       setSelectedFilters(filters);
       setSelectedContactId(contactId);
-      setSelectedGroupId(groupId);
+      setSelectedListId(listId);
       setView(poppedView);
       setEditingContactId(null);
       setCopySourceContact(null);
-      setEditingGroupId(null);
+      setEditingListId(null);
     }
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  // The current "view" -- all contacts, or just the ones in the selected
-  // group's cached `ids` -- that search/filters/the alpha index all then
-  // narrow further. A missing/deleted group falls back to all contacts
-  // rather than showing an empty list.
-  const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
+  // The current "view" -- all contacts, or just the selected list's members
+  // -- that search/filters/the alpha index all then narrow further. A
+  // missing/deleted list falls back to all contacts rather than showing an
+  // empty list.
+  const selectedList = lists.find((list) => list.id === selectedListId) ?? null;
   const scopedContacts = useMemo(() => {
-    if (selectedGroup === null) {
+    if (selectedList === null) {
       return contacts;
     }
-    const idSet = new Set(selectedGroup.ids ?? []);
+    const idSet = new Set(listMemberIds[selectedList.id] ?? []);
     return contacts.filter((contact) => idSet.has(contact.id));
-  }, [contacts, selectedGroup]);
+  }, [contacts, selectedList, listMemberIds]);
 
   // Debounced so fast typing doesn't kick off a filter pass per keystroke;
   // the actual filtering then runs in a Web Worker, off the main thread.
@@ -410,8 +459,8 @@ export function App() {
   // Switching views (like switching a mailbox folder) resets the search/
   // filter/selection state scoped to the previous view, rather than
   // carrying it over into the new one.
-  function handleSelectGroup(groupId: number | null) {
-    setSelectedGroupId(groupId);
+  function handleSelectList(listId: number | null) {
+    setSelectedListId(listId);
     setSearchQuery("");
     setSelectedFilters([]);
     setSelectedContactId(null);
@@ -470,7 +519,7 @@ export function App() {
     setSyncReview(null);
     setSyncing(false);
     const [contactsData, tagsData] = await Promise.all([fetchContacts(), fetchTags()]);
-    setContacts(contactsData.contacts);
+    setContacts(contactsData.objects);
     setTags(tagsData.tags);
     const verb = direction === "pull" ? "Pulled from" : "Pushed to";
     setSyncMessage(
@@ -544,17 +593,32 @@ export function App() {
     setView(nextView);
   }
 
-  function handleNewGroup() {
-    setEditingGroupId("new");
+  function handleNewList() {
+    setEditingListId("new");
   }
 
-  function handleGroupSaved(group: Group) {
-    setGroups((prev) => {
-      const exists = prev.some((g) => g.id === group.id);
-      return exists ? prev.map((g) => (g.id === group.id ? group : g)) : [...prev, group];
+  async function handleListSaved(list: ListObject) {
+    setLists((prev) => {
+      const exists = prev.some((l) => l.id === list.id);
+      return exists ? prev.map((l) => (l.id === list.id ? list : l)) : [...prev, list];
     });
-    setSelectedGroupId(group.id);
-    setEditingGroupId(null);
+    // Saving a list runs/changes its query server-side, so re-read membership.
+    try {
+      setListMemberIds(parseMemberIds((await fetchAllListMemberIds()).member_ids));
+    } catch {
+      // Counts will catch up on the next load.
+    }
+    setSelectedListId(list.id);
+    setEditingListId(null);
+  }
+
+  function handleListRefreshed(list: ListObject) {
+    setLists((prev) => prev.map((l) => (l.id === list.id ? list : l)));
+    fetchAllListMemberIds()
+      .then((data) => setListMemberIds(parseMemberIds(data.member_ids)))
+      .catch(() => {
+        // Counts will catch up on the next load.
+      });
   }
 
   // Stable identity so it doesn't defeat ContactList's memoization on every
@@ -613,7 +677,7 @@ export function App() {
           setCopySourceContact(null);
           setEditingContactId("new");
         }}
-        onNewGroup={handleNewGroup}
+        onNewList={handleNewList}
         selectionMode={selectionMode}
         onToggleSelectionMode={toggleSelectionMode}
         selectedCount={selectedIds.size}
@@ -631,13 +695,14 @@ export function App() {
       {view === "contacts" ? (
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
           {!sidebarCollapsed && (
-            <GroupsNav
-              groups={groups}
-              selectedGroupId={selectedGroupId}
-              onSelectGroup={handleSelectGroup}
+            <ListsNav
+              lists={lists}
+              memberIds={listMemberIds}
+              selectedListId={selectedListId}
+              onSelectList={handleSelectList}
               totalContactCount={contacts.length}
-              refreshing={groupsRefreshing}
-              onRefresh={handleRefreshGroups}
+              refreshing={listsRefreshing}
+              onRefresh={handleRefreshLists}
             />
           )}
           {!sidebarCollapsed && (
@@ -705,34 +770,41 @@ export function App() {
       ) : (
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
           {!sidebarCollapsed && (
-            <GroupList
-              groups={groups}
-              selectedGroupId={selectedGroupId}
-              onSelectGroup={(groupId) => {
-                setSelectedGroupId(groupId);
-                setEditingGroupId(null);
+            <ListsPanel
+              lists={lists}
+              memberIds={listMemberIds}
+              selectedListId={selectedListId}
+              onSelectList={(listId) => {
+                setSelectedListId(listId);
+                setEditingListId(null);
               }}
-              refreshing={groupsRefreshing}
-              onRefresh={handleRefreshGroups}
+              refreshing={listsRefreshing}
+              onRefresh={handleRefreshLists}
             />
           )}
 
-          <Box component="main" id="group-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
-            {editingGroupId !== null ? (
-              <GroupForm
-                key={editingGroupId}
-                group={editingGroupId === "new" ? null : groups.find((g) => g.id === editingGroupId) ?? null}
-                onCancel={() => setEditingGroupId(null)}
-                onSaved={handleGroupSaved}
+          <Box component="main" id="list-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
+            {editingListId !== null ? (
+              <ListForm
+                key={editingListId}
+                list={editingListId === "new" ? null : lists.find((l) => l.id === editingListId) ?? null}
+                memberTypes={memberTypes}
+                onCancel={() => setEditingListId(null)}
+                onSaved={handleListSaved}
               />
             ) : (
               <Box sx={{ pt: 4 }}>
-                {selectedGroup ? (
-                  <GroupDetail group={selectedGroup} onEdit={() => setEditingGroupId(selectedGroup.id)} />
-                ) : selectedGroupId !== null ? (
-                  <Alert severity="error">Group not found.</Alert>
+                {selectedList ? (
+                  <ListDetail
+                    list={selectedList}
+                    memberCount={listMemberIds[selectedList.id]?.length ?? 0}
+                    onEdit={() => setEditingListId(selectedList.id)}
+                    onRefreshed={handleListRefreshed}
+                  />
+                ) : selectedListId !== null ? (
+                  <Alert severity="error">List not found.</Alert>
                 ) : (
-                  <Typography color="text.secondary">Select a group to see its details.</Typography>
+                  <Typography color="text.secondary">Select a list to see its details.</Typography>
                 )}
               </Box>
             )}

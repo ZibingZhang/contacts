@@ -7,12 +7,12 @@ import dataclasses
 import os.path
 from typing import Literal, Sequence
 
-import contacts
 from contacts.common import constant
 from contacts.dao.icloud import manager, model, transformer
 from contacts.dao.icloud.manager import exception
 from contacts.logger import LOG
-from contacts.utils import file_io_utils
+from contacts.utils import file_io_utils, object_utils
+from contacts.utils.object_utils import Object
 
 _ALERT_UUIDS = [
     "4B949DAF-F587-47DF-95C2-857B85800ADC",
@@ -30,12 +30,13 @@ _IGNORED_UUIDS = _ALERT_UUIDS + _TEST_CONTACT_UUIDS + _OTHER_UUIDS
 
 
 def _contact_id_to_icloud_uuid_map(
-    contacts_: Sequence[contacts.model.Contact],
+    contacts_: Sequence[Object],
 ) -> dict[int, str]:
     return {
-        contact.id: contact.icloud.uuid
+        contact["id"]: object_utils.get_path(contact, "icloud.uuid")
         for contact in contacts_
-        if contact.id is not None and contact.icloud is not None
+        if contact.get("id") is not None
+        and object_utils.get_path(contact, "icloud.uuid") is not None
     }
 
 
@@ -185,7 +186,7 @@ class ICloudDao:
         self,
         *,
         cached: bool = False,
-    ) -> tuple[list[contacts.model.Contact], list[contacts.model.Group]]:
+    ) -> tuple[list[Object], list[Object]]:
         LOG.info("Reading contacts and groups from iCloud")
 
         if cached:
@@ -243,7 +244,7 @@ class ICloudDao:
 
         return contacts, groups
 
-    def create_contacts(self, contacts: Sequence[contacts.model.Contact]) -> None:
+    def create_contacts(self, contacts: Sequence[Object]) -> None:
         if len(contacts) == 0:
             return
 
@@ -257,7 +258,7 @@ class ICloudDao:
 
         LOG.info(f"Wrote {len(contacts)} new contacts to iCloud")
 
-    def update_contacts(self, contacts: Sequence[contacts.model.Contact]) -> None:
+    def update_contacts(self, contacts: Sequence[Object]) -> None:
         if len(contacts) == 0:
             return
 
@@ -273,23 +274,25 @@ class ICloudDao:
 
     def create_group(
         self,
-        group: contacts.model.Group,
-        contacts_: Sequence[contacts.model.Contact],
+        a_list: Object,
+        member_ids: list[int],
+        contacts_: Sequence[Object],
     ) -> None:
         contact_manager = self._get_contact_manager()
         icloud_group = transformer.group_to_icloud_group(
-            group, _contact_id_to_icloud_uuid_map(contacts_)
+            a_list, member_ids, _contact_id_to_icloud_uuid_map(contacts_)
         )
         contact_manager.create_group(icloud_group)
 
     def update_group(
         self,
-        group: contacts.model.Group,
-        contacts_: Sequence[contacts.model.Contact],
+        a_list: Object,
+        member_ids: list[int],
+        contacts_: Sequence[Object],
     ) -> None:
         contact_manager = self._get_contact_manager()
         icloud_group = transformer.group_to_icloud_group(
-            group, _contact_id_to_icloud_uuid_map(contacts_)
+            a_list, member_ids, _contact_id_to_icloud_uuid_map(contacts_)
         )
         contact_manager.update_group(icloud_group)
 

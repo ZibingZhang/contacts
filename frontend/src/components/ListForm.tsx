@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { Group } from "../types";
-import { createGroup, updateGroup, ApiError } from "../api";
+import type { ListObject } from "../types";
+import { createList, updateList, ApiError } from "../api";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
@@ -9,32 +9,47 @@ import Alert from "@mui/material/Alert";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 
-interface GroupFormProps {
-  group: Group | null;
+interface ListFormProps {
+  list: ListObject | null;
+  memberTypes: string[];
   onCancel: () => void;
-  onSaved: (group: Group) => void;
+  onSaved: (list: ListObject) => void;
 }
 
-export function GroupForm({ group, onCancel, onSaved }: GroupFormProps) {
-  const [name, setName] = useState(group?.name ?? "");
-  const [query, setQuery] = useState(group?.query ?? "");
-  const [sync, setSync] = useState(group?.sync ?? false);
+export function ListForm({ list, memberTypes, onCancel, onSaved }: ListFormProps) {
+  const [name, setName] = useState(list?.name ?? "");
+  const [query, setQuery] = useState(list?.query ?? "");
+  const [memberType, setMemberType] = useState(list?.member_type ?? "contact");
+  const [sync, setSync] = useState(list?.sync ?? false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isDirty = group === null || name !== group.name || query !== group.query || sync !== group.sync;
-  const isValid = name.trim() !== "" && query.trim() !== "";
+  const isDirty =
+    list === null ||
+    name !== list.name ||
+    query !== (list.query ?? "") ||
+    memberType !== list.member_type ||
+    sync !== list.sync;
+  const isValid = name.trim() !== "";
 
   async function handleSubmit() {
     if (isSubmitting || !isValid) return;
     setIsSubmitting(true);
     setError(null);
     try {
-      const payload = { name: name.trim(), query: query.trim(), sync };
-      const saved = group ? await updateGroup(group.id, payload) : await createGroup(payload);
+      // An empty query means "maintained by hand", so omit it rather than
+      // storing a blank string.
+      const payload: Record<string, unknown> = {
+        name: name.trim(),
+        member_type: memberType,
+        sync,
+      };
+      if (query.trim() !== "") payload.query = query.trim();
+
+      const saved = list ? await updateList(list.id, payload) : await createList(payload);
       onSaved(saved);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : `Failed to ${group ? "save" : "create"} group`);
+      setError(err instanceof ApiError ? err.message : `Failed to ${list ? "save" : "create"} list`);
       setIsSubmitting(false);
     }
   }
@@ -55,7 +70,7 @@ export function GroupForm({ group, onCancel, onSaved }: GroupFormProps) {
   });
 
   return (
-    <Box id="group-form">
+    <Box id="list-form">
       <Box
         sx={{
           display: "flex",
@@ -69,7 +84,7 @@ export function GroupForm({ group, onCancel, onSaved }: GroupFormProps) {
           backgroundColor: "background.paper",
         }}
       >
-        <Typography variant="h5">{group ? "Edit Group" : "New Group"}</Typography>
+        <Typography variant="h5">{list ? "Edit List" : "New List"}</Typography>
         <Box sx={{ display: "flex", gap: 1 }}>
           <Button onClick={onCancel} disabled={isSubmitting}>
             Cancel
@@ -87,7 +102,7 @@ export function GroupForm({ group, onCancel, onSaved }: GroupFormProps) {
       )}
 
       <TextField
-        id="group-form-name"
+        id="list-form-name"
         label="Name"
         value={name}
         onChange={(event) => setName(event.target.value)}
@@ -98,7 +113,31 @@ export function GroupForm({ group, onCancel, onSaved }: GroupFormProps) {
       />
 
       <TextField
-        id="group-form-query"
+        id="list-form-member-type"
+        label="Member type"
+        value={memberType}
+        onChange={(event) => setMemberType(event.target.value)}
+        size="small"
+        fullWidth
+        select
+        slotProps={{ select: { native: true } }}
+        disabled={list !== null}
+        helperText={
+          list !== null
+            ? "A list's member type can't change once it has been created."
+            : "The type of object this list holds."
+        }
+        sx={{ mb: 2 }}
+      >
+        {memberTypes.map((type) => (
+          <option key={type} value={type}>
+            {type}
+          </option>
+        ))}
+      </TextField>
+
+      <TextField
+        id="list-form-query"
         label="Query"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
@@ -106,8 +145,11 @@ export function GroupForm({ group, onCancel, onSaved }: GroupFormProps) {
         fullWidth
         multiline
         minRows={5}
-        placeholder="SELECT id FROM contact WHERE ..."
-        helperText="A SQL statement whose first result column is a contact id -- re-run to refresh membership."
+        placeholder={`SELECT id FROM ${memberType} WHERE ...`}
+        helperText={
+          "A SQL statement whose first result column is an object id. Leave " +
+          "empty to maintain membership by hand."
+        }
         sx={{ mb: 2, "& textarea": { fontFamily: "monospace", fontSize: "0.85rem" } }}
       />
 

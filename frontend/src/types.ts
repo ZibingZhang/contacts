@@ -105,9 +105,13 @@ export interface ContactFieldOptions {
   universities: string[];
 }
 
-export interface ContactsResponse {
-  contacts: Contact[];
+// The generic object envelope every /api/objects/<type> endpoint returns.
+export interface ObjectsResponse<T> {
+  objects: T[];
+  total: number;
 }
+
+export type ContactsResponse = ObjectsResponse<Contact>;
 
 export interface TagsResponse {
   tags: TagCount[];
@@ -166,18 +170,85 @@ export interface ICloudGroupMetadata {
   etag?: string;
 }
 
-export interface Group {
+// An object type definition. Field types mirror contacts/model/schema.py.
+export type FieldType =
+  | "text"
+  | "long_text"
+  | "integer"
+  | "number"
+  | "boolean"
+  | "date"
+  | "select"
+  | "reference"
+  | "object"
+  | "any";
+
+export interface SchemaField {
+  key: string;
+  label: string;
+  type: FieldType;
+  many?: boolean;
+  required?: boolean;
+  managed?: boolean;
+  default?: unknown;
+  fields?: SchemaField[];
+  options?: (string | number)[];
+  options_from?: string;
+  ref_type?: string;
+  unique?: boolean;
+  order_by?: string;
+}
+
+export interface SchemaObject {
   id: number;
   name: string;
-  query: string;
-  ids?: number[];
+  label: string;
+  fields: SchemaField[];
+  builtin?: boolean;
+  ctime?: number;
+  mtime?: number;
+}
+
+export interface SchemasResponse {
+  schemas: SchemaObject[];
+  total: number;
+}
+
+// A named set of objects. Membership lives in associations, not here, so
+// there is no `ids` field -- read it from /api/lists/<id>/member-ids.
+export interface ListObject {
+  id: number;
+  name: string;
+  // Absent means the list is maintained by hand rather than by a query.
+  query?: string;
+  member_type: string;
   sync: boolean;
   ctime?: number;
   mtime?: number;
   icloud?: ICloudGroupMetadata;
 }
 
-export interface GroupsResponse {
-  groups: Group[];
+export type ListsResponse = ObjectsResponse<ListObject>;
+
+// List id -> its member object ids.
+export interface ListMemberIdsResponse {
+  member_ids: Record<string, number[]>;
+}
+
+export interface MemberIdsResponse {
+  ids: number[];
   total: number;
 }
+
+// A link between any two objects, in either direction.
+export interface Association {
+  id: number;
+  object_type_1: string;
+  object_id_1: number;
+  object_type_2: string;
+  object_id_2: number;
+  ctime?: number;
+  mtime?: number;
+}
+
+export type AssociationsResponse = ObjectsResponse<Association>;

@@ -35,5 +35,3 @@ class CountryCode(enum.IntEnum):
     @functools.cache
     def values() -> list[int]:
         return [item for item in CountryCode]
-
-

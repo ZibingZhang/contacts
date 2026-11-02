@@ -1,11 +1,18 @@
 import type {
+  Association,
+  AssociationsResponse,
   BatchAddTagsResponse,
   Contact,
   ContactFieldOptions,
   ContactsResponse,
-  Group,
-  GroupsResponse,
+  ListMemberIdsResponse,
+  ListObject,
+  ListsResponse,
+  MemberIdsResponse,
+  ObjectsResponse,
   QueryResult,
+  SchemaObject,
+  SchemasResponse,
   SyncResult,
   TagsResponse,
 } from "./types";
@@ -66,8 +73,67 @@ async function apiPut<T>(path: string, body: unknown): Promise<T> {
   return readJsonResponse<T>(response);
 }
 
+async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(API_BASE_URL + path, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return readJsonResponse<T>(response);
+}
+
+// -- Generic objects -------------------------------------------------------
+
+export function fetchObjects<T>(objectType: string): Promise<ObjectsResponse<T>> {
+  return apiGet<ObjectsResponse<T>>(`/objects/${objectType}`);
+}
+
+export function fetchObject<T>(objectType: string, objectId: number): Promise<T> {
+  return apiGet<T>(`/objects/${objectType}/${objectId}`);
+}
+
+export function createObject<T>(objectType: string, payload: Record<string, unknown>): Promise<T> {
+  return apiPost<T>(`/objects/${objectType}`, payload);
+}
+
+export function updateObject<T>(
+  objectType: string,
+  objectId: number,
+  payload: Record<string, unknown>
+): Promise<T> {
+  return apiPut<T>(`/objects/${objectType}/${objectId}`, payload);
+}
+
+export function deleteObject(objectType: string, objectId: number): Promise<{ status: string }> {
+  return apiDelete<{ status: string }>(`/objects/${objectType}/${objectId}`);
+}
+
+// -- Schemas ---------------------------------------------------------------
+
+export function fetchSchemas(): Promise<SchemasResponse> {
+  return apiGet<SchemasResponse>("/schemas");
+}
+
+export function fetchSchema(name: string): Promise<SchemaObject> {
+  return apiGet<SchemaObject>(`/schemas/${name}`);
+}
+
+export function createSchema(payload: Record<string, unknown>): Promise<SchemaObject> {
+  return apiPost<SchemaObject>("/schemas", payload);
+}
+
+export function updateSchema(name: string, payload: Record<string, unknown>): Promise<SchemaObject> {
+  return apiPut<SchemaObject>(`/schemas/${name}`, payload);
+}
+
+export function deleteSchema(name: string): Promise<{ status: string }> {
+  return apiDelete<{ status: string }>(`/schemas/${name}`);
+}
+
+// -- Contacts --------------------------------------------------------------
+
 export function fetchContacts(): Promise<ContactsResponse> {
-  return apiGet<ContactsResponse>("/contacts");
+  return apiGet<ContactsResponse>("/objects/contact");
 }
 
 export function fetchTags(): Promise<TagsResponse> {
@@ -75,19 +141,26 @@ export function fetchTags(): Promise<TagsResponse> {
 }
 
 export function fetchContactFieldOptions(): Promise<ContactFieldOptions> {
-  return apiGet<ContactFieldOptions>("/contacts/options");
+  return apiGet<ContactFieldOptions>("/objects/contact/options");
 }
 
 export function createContact(payload: Record<string, unknown>): Promise<Contact> {
-  return apiPost<Contact>("/contacts", payload);
+  return createObject<Contact>("contact", payload);
 }
 
 export function updateContact(contactId: number, payload: Record<string, unknown>): Promise<Contact> {
-  return apiPut<Contact>(`/contacts/${contactId}`, payload);
+  return updateObject<Contact>("contact", contactId, payload);
+}
+
+export function deleteContact(contactId: number): Promise<{ status: string }> {
+  return deleteObject("contact", contactId);
 }
 
 export function batchAddTags(contactIds: number[], tags: string[]): Promise<BatchAddTagsResponse> {
-  return apiPost<BatchAddTagsResponse>("/contacts/batch/tags", { contact_ids: contactIds, tags });
+  return apiPost<BatchAddTagsResponse>("/objects/contact/batch/tags", {
+    contact_ids: contactIds,
+    tags,
+  });
 }
 
 export function startSync(): Promise<SyncResult> {
@@ -128,20 +201,75 @@ export function applyPushReview(createIcloudIds: string[], updateIcloudIds: stri
   });
 }
 
-export function fetchGroups(): Promise<GroupsResponse> {
-  return apiGet<GroupsResponse>("/groups");
+// -- Lists -----------------------------------------------------------------
+
+export function fetchLists(): Promise<ListsResponse> {
+  return fetchObjects<ListObject>("list");
 }
 
-export function createGroup(payload: Record<string, unknown>): Promise<Group> {
-  return apiPost<Group>("/groups", payload);
+export function createList(payload: Record<string, unknown>): Promise<ListObject> {
+  return createObject<ListObject>("list", payload);
 }
 
-export function updateGroup(groupId: number, payload: Record<string, unknown>): Promise<Group> {
-  return apiPut<Group>(`/groups/${groupId}`, payload);
+export function updateList(listId: number, payload: Record<string, unknown>): Promise<ListObject> {
+  return updateObject<ListObject>("list", listId, payload);
 }
 
-export function refreshGroups(): Promise<GroupsResponse> {
-  return apiPost<GroupsResponse>("/groups/refresh", {});
+export function deleteList(listId: number): Promise<{ status: string }> {
+  return deleteObject("list", listId);
+}
+
+/** Every list's membership in one request -- the nav needs all the counts. */
+export function fetchAllListMemberIds(): Promise<ListMemberIdsResponse> {
+  return apiGet<ListMemberIdsResponse>("/lists/member-ids");
+}
+
+export function fetchListMemberIds(listId: number): Promise<MemberIdsResponse> {
+  return apiGet<MemberIdsResponse>(`/lists/${listId}/member-ids`);
+}
+
+export function fetchListMembers<T>(listId: number): Promise<ObjectsResponse<T>> {
+  return apiGet<ObjectsResponse<T>>(`/lists/${listId}/members`);
+}
+
+export function addListMembers(listId: number, ids: number[]): Promise<{ ids: number[] }> {
+  return apiPost<{ ids: number[] }>(`/lists/${listId}/members`, { ids });
+}
+
+export function removeListMembers(listId: number, ids: number[]): Promise<{ ids: number[] }> {
+  return apiDelete<{ ids: number[] }>(`/lists/${listId}/members`, { ids });
+}
+
+export function refreshList(listId: number): Promise<ListObject> {
+  return apiPost<ListObject>(`/lists/${listId}/refresh`, {});
+}
+
+export function refreshLists(): Promise<ListsResponse> {
+  return apiPost<ListsResponse>("/lists/refresh", {});
+}
+
+// -- Associations ----------------------------------------------------------
+
+export function fetchAssociations(objectType: string, objectId: number): Promise<AssociationsResponse> {
+  return apiGet<AssociationsResponse>(`/associations/${objectType}/${objectId}`);
+}
+
+export function createAssociation(
+  objectType1: string,
+  objectId1: number,
+  objectType2: string,
+  objectId2: number
+): Promise<Association> {
+  return apiPost<Association>("/associations", {
+    object_type_1: objectType1,
+    object_id_1: objectId1,
+    object_type_2: objectType2,
+    object_id_2: objectId2,
+  });
+}
+
+export function deleteAssociation(associationId: number): Promise<{ status: string }> {
+  return apiDelete<{ status: string }>(`/associations/${associationId}`);
 }
 
 export function runReadonlyQuery(sql: string): Promise<QueryResult> {

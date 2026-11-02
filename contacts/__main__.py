@@ -4,7 +4,7 @@ import argparse
 
 from contacts import command, parser
 from contacts.common import error
-from contacts.dao import icloud_dao
+from contacts.dao import disk_dao, icloud_dao
 from contacts.logger import LOG
 
 
@@ -14,6 +14,10 @@ def _run_command(cl_args: argparse.Namespace) -> None:
     from contacts.logger import LOG
 
     LOG.setLevel(level=logging.INFO)
+
+    # Importing the DAO no longer sets the database up, so every command has
+    # to ask for it. Idempotent, so repeated runs are free.
+    disk_dao.initialize()
 
     match cl_args.command:
         case command.Command.ADD:

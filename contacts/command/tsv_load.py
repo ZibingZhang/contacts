@@ -13,15 +13,18 @@ from contacts.dao import disk_dao
 from contacts.logger import LOG
 from contacts.utils import (
     contact_utils,
-    dataclasses_utils,
     input_utils,
     json_utils,
+    object_utils,
     pretty_print_utils,
 )
+from contacts.utils.object_utils import Object
 
 
 def run(write: bool) -> None:
-    contacts = {contact.id: contact for contact in disk_dao.read_contacts()}
+    contacts = {
+        contact["id"]: contact for contact in disk_dao.read_objects(model.TYPE_CONTACT)
+    }
     with open(
         os.path.join(constant.DATA_DIRECTORY, constant.TSV_FILE), "r", encoding="UTF8"
     ) as tsv_file:
@@ -41,20 +44,15 @@ def run(write: bool) -> None:
 
         for values in tsv_reader:
             if values[0] == "":
-                contact = model.Contact(name=model.Name())
+                contact: Object = {"name": {}}
                 _update_contact_properties(contact, properties[1:], values[1:])
-                print(
-                    pretty_print_utils.bordered(
-                        json_utils.dumps_indented(contact.to_dict())
-                    )
-                )
+                print(pretty_print_utils.bordered(json_utils.dumps_indented(contact)))
                 if input_utils.yes_no_input("Accept creation?"):
                     if write:
-                        disk_dao.create_contacts([contact])
+                        disk_dao.create_objects(model.TYPE_CONTACT, [contact])
                     else:
-                        LOG.info(
-                            f"Would have created contact {contact_utils.build_name_str(contact)} to disk"
-                        )
+                        name = contact_utils.build_name_str(contact)
+                        LOG.info(f"Would have created contact {name} to disk")
                 continue
 
             contact_id = int(values[0])
@@ -65,11 +63,11 @@ def run(write: bool) -> None:
             original_contact = copy.deepcopy(contact)
             _update_contact_properties(contact, properties[1:], values[1:])
 
-            diff = dataclasses_utils.diff(original_contact, contact)
+            diff = object_utils.diff(original_contact, contact)
 
             if diff:
                 current_contact_display = pretty_print_utils.bordered(
-                    json_utils.dumps_indented(original_contact.to_dict())
+                    json_utils.dumps_indented(original_contact)
                 )
                 diff_display = pretty_print_utils.bordered(
                     json_utils.dumps_indented(diff)
@@ -77,32 +75,28 @@ def run(write: bool) -> None:
                 print(pretty_print_utils.besides(current_contact_display, diff_display))
 
                 if input_utils.yes_no_input("Accept update?"):
-                    contact.mtime = time.time()
+                    contact["mtime"] = time.time()
                     if write:
-                        disk_dao.update_contacts([contact])
+                        disk_dao.update_objects(model.TYPE_CONTACT, [contact])
                     else:
-                        LOG.info(
-                            f"Would have updated {contact_utils.build_name_str(contact)} to disk"
-                        )
+                        name = contact_utils.build_name_str(contact)
+                        LOG.info(f"Would have updated {name} to disk")
 
 
 def _update_contact_properties(
-    contact: model.Contact, properties: list[str], values: list[str]
+    contact: Object, properties: list[str], values: list[str]
 ) -> None:
     for property, value in zip(properties, values):
         _update_contact_property(contact, property, value)
 
 
-def _update_contact_property(contact: model.Contact, property: str, value: str) -> None:
+def _update_contact_property(contact: Object, property: str, value: str) -> None:
     if value == "":
         return
-    fields = property.split(".")
-    obj = contact
-    for field in fields[:-1]:
-        obj = getattr(obj, field)
-        if obj is None:
-            return
+
     try:
-        setattr(obj, fields[-1], json.loads(value))
+        parsed = json.loads(value)
     except json.decoder.JSONDecodeError:
-        setattr(obj, fields[-1], value)
+        parsed = value
+
+    object_utils.set_path(contact, property, parsed)

@@ -1,76 +1,84 @@
-"""Command to push DB-backed groups (sync=True) to iCloud contact groups.
+"""Command to push DB-backed lists (sync=True) to iCloud contact groups.
 
-Each such group's `query` is re-run to refresh its cached `ids`; the group is
-pushed to iCloud (created if it has no iCloud link yet, else updated) when
-membership changed or it's new. A group with unchanged membership and an
-existing iCloud link is skipped -- note this means a renamed-but-otherwise-
-unchanged group won't have its new name pushed until membership next changes.
+Each such list's `query` is re-run and its membership associations are
+reconciled; the list is pushed to iCloud (created if it has no iCloud link
+yet, else updated) when membership changed or it's new. A list with unchanged
+membership and an existing iCloud link is skipped -- note this means a
+renamed-but-otherwise-unchanged list won't have its new name pushed until
+membership next changes.
 """
 from __future__ import annotations
 
 import time
-from typing import cast
 
 from contacts import model
 from contacts.dao import disk_dao
 from contacts.logger import LOG
-from contacts.utils import command_utils, uuid_utils
+from contacts.server import association_service, list_service
+from contacts.utils import command_utils, object_utils, uuid_utils
+from contacts.utils.object_utils import Object
 
 
 def run() -> None:
-    contacts = disk_dao.read_contacts()
-    groups = [group for group in disk_dao.read_groups() if group.sync]
+    contacts = disk_dao.read_objects(model.TYPE_CONTACT)
+    lists = [
+        a_list
+        for a_list in disk_dao.read_objects(model.TYPE_LIST)
+        if a_list.get("sync")
+    ]
 
-    if not groups:
-        LOG.info("No groups configured to sync")
+    if not lists:
+        LOG.info("No lists configured to sync")
         return
 
-    pushed_groups: list[model.DiskGroup] = []
+    pushed_lists: list[Object] = []
 
-    for group in groups:
-        new_ids = _run_query(group.query)
-        ids_changed = set(new_ids) != set(group.ids or [])
-        if ids_changed:
-            group.ids = new_ids
-            group.mtime = time.time()
+    for a_list in lists:
+        member_ids_before = association_service.related_ids(
+            model.TYPE_LIST, a_list["id"], a_list.get("member_type", model.TYPE_CONTACT)
+        )
 
-        is_new = group.icloud is None
+        list_service.refresh_list(a_list["id"])
+
+        member_ids = list_service.member_ids(a_list["id"])
+        ids_changed = set(member_ids) != set(member_ids_before)
+
+        is_new = object_utils.get_path(a_list, "icloud.uuid") is None
         if is_new:
-            group.icloud = model.ICloudGroupMetadata(uuid=uuid_utils.generate())
+            object_utils.set_path(a_list, "icloud.uuid", uuid_utils.generate())
 
         if not is_new and not ids_changed:
-            LOG.info(f"Skipping group {group.name}, unchanged")
+            LOG.info(f"Skipping list {a_list['name']}, unchanged")
             continue
 
         if is_new:
-            command_utils.write_new_group_to_icloud(group, contacts)
+            command_utils.write_new_group_to_icloud(a_list, member_ids, contacts)
         else:
-            command_utils.write_updated_group_to_icloud(group, contacts)
+            command_utils.write_updated_group_to_icloud(a_list, member_ids, contacts)
 
-        pushed_groups.append(group)
+        a_list["mtime"] = time.time()
+        pushed_lists.append(a_list)
         time.sleep(1)
 
-    if pushed_groups:
+    if pushed_lists:
         LOG.info("Pulling groups to sync etags")
-        _refresh_etags(pushed_groups)
-        disk_dao.update_groups(pushed_groups)
+        _refresh_etags(pushed_lists)
+        disk_dao.update_objects(model.TYPE_LIST, pushed_lists)
 
 
-def _run_query(query: str) -> list[int]:
-    return [int(row[0]) for row in disk_dao.run_readonly_query(query)]
-
-
-def _refresh_etags(groups: list[model.DiskGroup]) -> None:
+def _refresh_etags(lists: list[Object]) -> None:
     icloud_groups_by_uuid = {
-        icloud_group.icloud.uuid: icloud_group
+        uuid: icloud_group
         for icloud_group in command_utils.read_groups_from_icloud()
-        if icloud_group.icloud is not None
+        if (uuid := object_utils.get_path(icloud_group, "icloud.uuid")) is not None
     }
 
-    for group in groups:
-        icloud_metadata = cast(model.ICloudGroupMetadata, group.icloud)
-        icloud_group = icloud_groups_by_uuid.get(icloud_metadata.uuid)
+    for a_list in lists:
+        uuid = object_utils.get_path(a_list, "icloud.uuid")
+        icloud_group = icloud_groups_by_uuid.get(uuid)
         if icloud_group is not None:
-            icloud_metadata.etag = cast(
-                model.ICloudGroupMetadata, icloud_group.icloud
-            ).etag
+            object_utils.set_path(
+                a_list,
+                "icloud.etag",
+                object_utils.get_path(icloud_group, "icloud.etag"),
+            )

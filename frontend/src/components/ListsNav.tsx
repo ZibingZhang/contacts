@@ -1,4 +1,4 @@
-import type { Group } from "../types";
+import type { ListObject } from "../types";
 import Box from "@mui/material/Box";
 import List from "@mui/material/List";
 import ListSubheader from "@mui/material/ListSubheader";
@@ -12,27 +12,29 @@ import SyncIcon from "@mui/icons-material/Sync";
 
 const WIDTH = 190;
 
-interface GroupsNavProps {
-  groups: Group[];
-  selectedGroupId: number | null;
-  onSelectGroup: (groupId: number | null) => void;
+interface ListsNavProps {
+  lists: ListObject[];
+  memberIds: Record<number, number[]>;
+  selectedListId: number | null;
+  onSelectList: (listId: number | null) => void;
   totalContactCount: number;
   refreshing: boolean;
   onRefresh: () => void;
 }
 
-export function GroupsNav({
-  groups,
-  selectedGroupId,
-  onSelectGroup,
+export function ListsNav({
+  lists,
+  memberIds,
+  selectedListId,
+  onSelectList,
   totalContactCount,
   refreshing,
   onRefresh,
-}: GroupsNavProps) {
+}: ListsNavProps) {
   return (
     <Box
       component="nav"
-      id="groups-nav"
+      id="lists-nav"
       sx={{
         width: WIDTH,
         flexShrink: 0,
@@ -45,9 +47,9 @@ export function GroupsNav({
     >
       <List dense sx={{ py: 0 }}>
         <ListItemButton
-          id="groups-nav-all-contacts"
-          selected={selectedGroupId === null}
-          onClick={() => onSelectGroup(null)}
+          id="lists-nav-all-contacts"
+          selected={selectedListId === null}
+          onClick={() => onSelectList(null)}
         >
           <ListItemText primary="All Contacts" />
           <Typography variant="caption" color="text.secondary">
@@ -64,13 +66,13 @@ export function GroupsNav({
             component="div"
             sx={{ display: "flex", alignItems: "center", lineHeight: "normal", py: 0.5 }}
           >
-            <Box sx={{ flexGrow: 1 }}>Groups</Box>
-            <Tooltip title="Re-run each group's query to refresh its membership">
+            <Box sx={{ flexGrow: 1 }}>Lists</Box>
+            <Tooltip title="Re-run each list's query to refresh its membership">
               <span>
                 <IconButton
-                  id="groups-nav-refresh-button"
+                  id="lists-nav-refresh-button"
                   size="small"
-                  aria-label="Refresh groups"
+                  aria-label="Refresh lists"
                   onClick={onRefresh}
                   disabled={refreshing}
                 >
@@ -81,21 +83,21 @@ export function GroupsNav({
           </ListSubheader>
         }
       >
-        {groups.length === 0 && (
+        {lists.length === 0 && (
           <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1 }}>
-            No groups yet.
+            No lists yet.
           </Typography>
         )}
-        {groups.map((group) => (
+        {lists.map((list) => (
           <ListItemButton
-            key={group.id}
-            data-group-id={group.id}
-            selected={selectedGroupId === group.id}
-            onClick={() => onSelectGroup(group.id)}
+            key={list.id}
+            data-list-id={list.id}
+            selected={selectedListId === list.id}
+            onClick={() => onSelectList(list.id)}
           >
-            <ListItemText primary={group.name} slotProps={{ primary: { noWrap: true, title: group.name } }} />
+            <ListItemText primary={list.name} slotProps={{ primary: { noWrap: true, title: list.name } }} />
             <Typography variant="caption" color="text.secondary">
-              {group.ids?.length ?? 0}
+              {memberIds[list.id]?.length ?? 0}
             </Typography>
           </ListItemButton>
         ))}

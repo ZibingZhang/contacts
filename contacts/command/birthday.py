@@ -1,4 +1,4 @@
-"""Command to push contacts to a remote source."""
+"""Command to list upcoming birthdays."""
 
 from __future__ import annotations
 
@@ -8,11 +8,13 @@ import sys
 from contacts import model
 from contacts.dao import disk_dao
 from contacts.logger import LOG
+from contacts.utils import contact_utils
+from contacts.utils.object_utils import Object
 
 
 def run(*, days: int) -> None:
     disk_contacts = sorted(
-        filter(contact_has_birthday, disk_dao.read_contacts()),
+        filter(contact_has_birthday, disk_dao.read_objects(model.TYPE_CONTACT)),
         key=format_birthday_as_mmdd,
     )
     min_day = datetime.date.today()
@@ -35,27 +37,35 @@ def run(*, days: int) -> None:
         return
 
     max_name_length = max(
-        1 + len(contact.name.first_name or "") + len(contact.name.last_name or "")
-        for contact in contacts
+        len(contact_utils.build_name_str(contact)) for contact in contacts
     )
     for contact in contacts:
-        LOG.info(
-            f"{f'{contact.name.first_name} {contact.name.last_name}'.ljust(max_name_length)} -- {contact.birthday}"
-        )
+        name = contact_utils.build_name_str(contact).ljust(max_name_length)
+        LOG.info(f"{name} -- {contact['birthday']}")
 
 
-def contact_has_birthday(contact: model.Contact) -> bool:
-    return contact.birthday is not None
+def contact_has_birthday(contact: Object) -> bool:
+    return contact.get("birthday") is not None
 
 
-def format_birthday_as_mmdd(contact: model.Contact) -> int:
-    if (
-        contact.birthday is None
-        or contact.birthday.day is None
-        or contact.birthday.month is None
-    ):
+def format_birthday_as_mmdd(contact: Object) -> int:
+    """Sorts a contact by the month and day of its birthday.
+
+    Args:
+        contact: The contact.
+
+    Returns:
+        The birthday as MMDD, or sys.maxsize when either part is masked.
+    """
+    birthday = contact.get("birthday")
+    if birthday is None:
         return sys.maxsize
-    return 100 * contact.birthday.month + contact.birthday.day
+
+    month, day = birthday[5:7], birthday[8:10]
+    if not month.isdigit() or not day.isdigit():
+        return sys.maxsize
+
+    return 100 * int(month) + int(day)
 
 
 def format_date_as_mmdd(date: datetime.date) -> int:

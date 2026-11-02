@@ -86,7 +86,7 @@ function AppearanceMenu() {
   );
 }
 
-export type AppView = "contacts" | "groups" | "birthdays";
+export type AppView = "contacts" | "lists" | "birthdays";
 
 interface TopBarProps {
   view: AppView;
@@ -94,7 +94,7 @@ interface TopBarProps {
   sidebarCollapsed: boolean;
   onToggleSidebarCollapsed: () => void;
   onNewContact: () => void;
-  onNewGroup: () => void;
+  onNewList: () => void;
   selectionMode: boolean;
   onToggleSelectionMode: () => void;
   selectedCount: number;
@@ -115,7 +115,7 @@ export function TopBar({
   sidebarCollapsed,
   onToggleSidebarCollapsed,
   onNewContact,
-  onNewGroup,
+  onNewList,
   selectionMode,
   onToggleSelectionMode,
   selectedCount,
@@ -162,8 +162,8 @@ export function TopBar({
           New Contact
         </Button>
       ) : (
-        <Button id="new-group-button" size="small" variant="contained" onClick={onNewGroup}>
-          New Group
+        <Button id="new-list-button" size="small" variant="contained" onClick={onNewList}>
+          New List
         </Button>
       )}
       {isContactsView && (
@@ -220,14 +220,14 @@ export function TopBar({
           </Tooltip>
         </>
       )}
-      <Tooltip title={view === "groups" ? "Switch to Contacts" : "Switch to Groups"}>
+      <Tooltip title={view === "lists" ? "Switch to Contacts" : "Switch to Lists"}>
         <IconButton
-          id="groups-view-toggle"
+          id="lists-view-toggle"
           size="small"
-          aria-label="Toggle Groups view"
-          aria-pressed={view === "groups"}
-          color={view === "groups" ? "primary" : "default"}
-          onClick={() => onSelectView(view === "groups" ? "contacts" : "groups")}
+          aria-label="Toggle Lists view"
+          aria-pressed={view === "lists"}
+          color={view === "lists" ? "primary" : "default"}
+          onClick={() => onSelectView(view === "lists" ? "contacts" : "lists")}
         >
           <GroupsIcon fontSize="small" />
         </IconButton>

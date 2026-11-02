@@ -7,7 +7,6 @@ import textwrap
 from collections.abc import Sequence
 from typing import Type, TypeVar
 
-from contacts import model
 from contacts.utils import dataclasses_utils
 
 T = TypeVar("T", bound=dataclasses_utils.DataClassJsonMixin)
@@ -48,17 +47,19 @@ def read_json_array_as_dataclass_objects(path: str, cls: Type[T]) -> list[T]:
     return [cls.from_dict(obj) for obj in objects]
 
 
-def write_contact_as_json_object(path: str, contact: model.Contact) -> None:
-    """Write a contact to a file.
+def read_json_array(path: str) -> list[dict]:
+    """Read a json array of objects from a file.
 
-    Transform a contact to a json object write it to a file.
+    For objects, which are plain dicts rather than dataclasses.
 
     Args:
-        path: The path of the file to write to.
-        contact: The contact to write to the file.
+        path: The path of the file containing the json array of objects.
+
+    Returns:
+        A list of dicts.
     """
-    with open(path, mode="w+", encoding="utf-8") as f:
-        f.write(contact.to_json(indent=2))
+    with open(path, encoding="utf-8") as f:
+        return json.loads(f.read().strip())
 
 
 def write_dataclass_objects_as_json_array(
@@ -79,7 +80,3 @@ def write_dataclass_objects_as_json_array(
         output += textwrap.indent(",\n".join(obj.to_json() for obj in objects), "    ")
         output += "\n]\n"
         f.write(output)
-
-
-def _contact_key(contact: model.Contact) -> str:
-    return f"{contact.name.last_name or ' '}{contact.name.first_name}{contact.tags}"

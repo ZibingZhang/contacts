@@ -1,7 +1,7 @@
 """Backing logic for the admin SQL console.
 
 A deliberate escape hatch for running arbitrary SQL against data/data.db,
-separate from the structured Contact CRUD API in service.py. Read-only mode is
+separate from the schema-validated CRUD API in object_service.py. Read-only mode is
 enforced by SQLite itself (opening the connection in `mode=ro`), not by
 inspecting the SQL text, so it can't be bypassed by unusual statement wording.
 """
@@ -12,7 +12,7 @@ import sqlite3
 from typing import TypedDict
 
 from contacts.dao import disk_dao
-from contacts.server import errors, service
+from contacts.server import errors, object_service, schema_service
 
 _MAX_ROWS = 500
 
@@ -68,9 +68,10 @@ def run_query(sql: str) -> QueryResult:
     finally:
         connection.close()
 
-    # We don't know which table a write touched, so always invalidate rather
-    # than letting service._contacts_cache silently go stale.
-    service.invalidate_contacts_cache()
+    # We don't know what a write touched, so drop every cache rather than
+    # letting objects or schemas silently go stale.
+    object_service.invalidate_cache()
+    schema_service.invalidate_cache()
 
     return result
 
@@ -82,7 +83,9 @@ def _execute(connection: sqlite3.Connection, sql: str) -> QueryResult:
         raise errors.ValidationError(str(e)) from e
 
     if cursor.description is None:
-        return QueryResult(columns=None, rows=None, rowcount=cursor.rowcount, truncated=False)
+        return QueryResult(
+            columns=None, rows=None, rowcount=cursor.rowcount, truncated=False
+        )
 
     columns = [column[0] for column in cursor.description]
     rows = [list(row) for row in cursor.fetchmany(_MAX_ROWS + 1)]
@@ -90,4 +93,6 @@ def _execute(connection: sqlite3.Connection, sql: str) -> QueryResult:
     if truncated:
         rows = rows[:_MAX_ROWS]
 
-    return QueryResult(columns=columns, rows=rows, rowcount=len(rows), truncated=truncated)
+    return QueryResult(
+        columns=columns, rows=rows, rowcount=len(rows), truncated=truncated
+    )
