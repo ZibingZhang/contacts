@@ -23,29 +23,19 @@ from contacts.utils.object_utils import Object
 # Fields that live in columns rather than in the `data` blob.
 _COLUMN_FIELDS = ("id", "ctime", "mtime")
 
-_BACKUP_SUFFIX = ".pre-crm-backup"
-
-# Tables the object table replaced. Their presence is what triggers migration.
-_LEGACY_CONTACT_TABLES = ("contact", "contacts")
-_LEGACY_GROUP_TABLE = "group"
-
 
 class DiskDao:
     PATH = os.path.join(constant.DATA_DIRECTORY, constant.CONTACTS_DB_FILE)
 
     @staticmethod
     def initialize() -> None:
-        """Create the database if needed, migrate it, and seed built-in schemas.
+        """Create the database if needed and seed built-in schemas.
 
-        Called explicitly from the entrypoint rather than on import. The
-        migration to the `object` table is one-way, so importing this module
-        -- which tests and tooling do freely -- must not trigger it.
+        Called explicitly from the entrypoint rather than on import, so tests
+        and tooling can import this module freely without touching disk.
         """
         if not os.path.exists(constant.DATA_DIRECTORY):
             os.makedirs(constant.DATA_DIRECTORY)
-
-        DiskDao._migrate_file()
-        DiskDao._backup_before_migration()
 
         with contextlib.closing(DiskDao._connect()) as connection, connection:
             connection.execute("PRAGMA journal_mode=WAL")
@@ -62,162 +52,12 @@ class DiskDao:
                 """
             )
             DiskDao._create_association_indexes(connection)
-            DiskDao._migrate_to_object_table(connection)
-            DiskDao._remove_self_describing_schema(connection)
             DiskDao._seed_builtin_schemas(connection)
             DiskDao._create_missing_views(connection)
 
     @staticmethod
     def _connect() -> sqlite3.Connection:
         return sqlite3.connect(DiskDao.PATH)
-
-    @staticmethod
-    def _migrate_file() -> None:
-        old_path = os.path.join(os.path.dirname(DiskDao.PATH), "contacts.db")
-        if old_path == DiskDao.PATH or not os.path.exists(old_path):
-            return
-        if os.path.exists(DiskDao.PATH):
-            return
-
-        LOG.info(f"Migrating {old_path} to {DiskDao.PATH}")
-        os.rename(old_path, DiskDao.PATH)
-        for suffix in ("-wal", "-shm"):
-            if os.path.exists(old_path + suffix):
-                os.rename(old_path + suffix, DiskDao.PATH + suffix)
-
-    @staticmethod
-    def _table_names(connection: sqlite3.Connection) -> set[str]:
-        return {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            )
-        }
-
-    @staticmethod
-    def _backup_before_migration() -> None:
-        """Copies the database aside before the one-way migration to `object`.
-
-        Uses SQLite's backup API rather than a file copy, so any pending WAL
-        contents are included.
-        """
-        if not os.path.exists(DiskDao.PATH):
-            return
-
-        with contextlib.closing(DiskDao._connect()) as connection:
-            tables = DiskDao._table_names(connection)
-
-        legacy = {*_LEGACY_CONTACT_TABLES, _LEGACY_GROUP_TABLE}
-        if not legacy & tables:
-            return
-
-        backup_path = DiskDao.PATH + _BACKUP_SUFFIX
-        if os.path.exists(backup_path):
-            return
-
-        LOG.info(f"Backing up {DiskDao.PATH} to {backup_path} before migrating")
-        with contextlib.closing(DiskDao._connect()) as source, contextlib.closing(
-            sqlite3.connect(backup_path)
-        ) as destination:
-            source.backup(destination)
-
-    @staticmethod
-    def _strip_column_fields(data: str) -> Object:
-        blob = json.loads(data)
-        for key in _COLUMN_FIELDS:
-            blob.pop(key, None)
-        return blob
-
-    @staticmethod
-    def _insert_row(
-        connection: sqlite3.Connection,
-        object_type: str,
-        object_id: int,
-        ctime: float,
-        mtime: float | None,
-        data: Object,
-    ) -> None:
-        connection.execute(
-            """
-            INSERT INTO object (type, id, ctime, mtime, data)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (object_type, object_id, ctime, mtime, json_utils.dumps(data)),
-        )
-
-    @staticmethod
-    def _migrate_to_object_table(connection: sqlite3.Connection) -> None:
-        """Moves the old per-entity tables into `object`, then drops them.
-
-        Guarded on table (not view) existence, since a view named `contact`
-        exists once this has run.
-        """
-        tables = DiskDao._table_names(connection)
-
-        for legacy_table in _LEGACY_CONTACT_TABLES:
-            if legacy_table not in tables:
-                continue
-
-            LOG.info(f"Migrating table {legacy_table} into object as contacts")
-            rows = connection.execute(
-                f'SELECT id, ctime, mtime, data FROM "{legacy_table}"'
-            ).fetchall()
-            for object_id, ctime, mtime, data in rows:
-                DiskDao._insert_row(
-                    connection,
-                    schema.TYPE_CONTACT,
-                    object_id,
-                    ctime,
-                    mtime,
-                    DiskDao._strip_column_fields(data),
-                )
-            connection.execute(f'DROP TABLE "{legacy_table}"')
-            LOG.info(f"Migrated {len(rows)} contacts")
-            break
-
-        if _LEGACY_GROUP_TABLE in tables:
-            DiskDao._migrate_groups(connection)
-            connection.execute(f'DROP TABLE "{_LEGACY_GROUP_TABLE}"')
-
-    @staticmethod
-    def _migrate_groups(connection: sqlite3.Connection) -> None:
-        """Turns each group into a list object plus one association per member."""
-        LOG.info("Migrating table group into object as lists and associations")
-
-        rows = connection.execute(
-            f'SELECT id, ctime, mtime, data FROM "{_LEGACY_GROUP_TABLE}" ORDER BY id'
-        ).fetchall()
-
-        next_association_id = 1
-
-        for object_id, ctime, mtime, data in rows:
-            blob = DiskDao._strip_column_fields(data)
-            member_ids = blob.pop("ids", None) or []
-            blob.setdefault("member_type", schema.TYPE_CONTACT)
-
-            DiskDao._insert_row(
-                connection, schema.TYPE_LIST, object_id, ctime, mtime, blob
-            )
-
-            for member_id in member_ids:
-                DiskDao._insert_row(
-                    connection,
-                    schema.TYPE_ASSOCIATION,
-                    next_association_id,
-                    ctime,
-                    mtime,
-                    {
-                        "object_type_1": schema.TYPE_LIST,
-                        "object_id_1": object_id,
-                        "object_type_2": schema.TYPE_CONTACT,
-                        "object_id_2": member_id,
-                    },
-                )
-                next_association_id += 1
-
-        LOG.info(
-            f"Migrated {len(rows)} lists and {next_association_id - 1} associations"
-        )
 
     @staticmethod
     def _create_association_indexes(connection: sqlite3.Connection) -> None:
@@ -238,32 +78,6 @@ class DiskDao:
                 WHERE type = '{schema.TYPE_ASSOCIATION}'
                 """
             )
-
-    @staticmethod
-    def _remove_self_describing_schema(connection: sqlite3.Connection) -> None:
-        """Removes a stored `type='schema', name='schema'` row and its view.
-
-        An earlier version of this app seeded a schema describing schema
-        objects themselves. That was a mistake -- "schema" tags every schema
-        definition's storage row, so it can't also be one of them without
-        risking the thing validation depends on being corrupted by a bad
-        edit. One-way cleanup, guarded so it's a no-op once run.
-        """
-        row = connection.execute(
-            "SELECT id FROM object WHERE type = ? "
-            "AND json_extract(data, '$.name') = ?",
-            (schema.TYPE_SCHEMA, schema.TYPE_SCHEMA),
-        ).fetchone()
-
-        if row is None:
-            return
-
-        LOG.info("Removing the self-describing schema row left by an earlier version")
-        connection.execute(
-            "DELETE FROM object WHERE type = ? AND id = ?",
-            (schema.TYPE_SCHEMA, row[0]),
-        )
-        connection.execute(f'DROP VIEW IF EXISTS "{schema.TYPE_SCHEMA}"')
 
     @staticmethod
     def _seed_builtin_schemas(connection: sqlite3.Connection) -> None:
