@@ -169,6 +169,43 @@ def test_related_ids_is_empty_for_a_type_with_no_links(a_list, contact) -> None:
     assert ids == []
 
 
+def test_member_ids_of_collects_only_side_2_of_matching_type(a_list, contact) -> None:
+    associate(a_list, contact)
+
+    ids = association_service.member_ids_of(
+        model.TYPE_LIST, a_list["id"], model.TYPE_CONTACT
+    )
+
+    assert ids == [contact["id"]]
+
+
+def test_member_ids_of_ignores_an_association_where_it_is_the_member_side() -> None:
+    container = object_service.create_object(model.TYPE_LIST, {"name": "Container"})
+    member = object_service.create_object(model.TYPE_LIST, {"name": "Member"})
+    object_service.create_object(
+        model.TYPE_ASSOCIATION,
+        {
+            "object_type_1": model.TYPE_LIST,
+            "object_id_1": container["id"],
+            "object_type_2": model.TYPE_LIST,
+            "object_id_2": member["id"],
+        },
+    )
+
+    # From `member`'s own perspective, it has no members -- unlike
+    # `related_ids`, this must not resolve the association back to
+    # `container` just because both sides are type "list".
+    assert (
+        association_service.member_ids_of(
+            model.TYPE_LIST, member["id"], model.TYPE_LIST
+        )
+        == []
+    )
+    assert association_service.member_ids_of(
+        model.TYPE_LIST, container["id"], model.TYPE_LIST
+    ) == [member["id"]]
+
+
 def test_delete_for_removes_every_association_touching_an_object(
     a_list, contact
 ) -> None:

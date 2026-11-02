@@ -156,15 +156,6 @@ def test_delete_object_reports_deleted_associations(client, contacts) -> None:
 # -- Contact aggregates ----------------------------------------------------
 
 
-def test_contact_options(client, contacts) -> None:
-    response = client.get("/api/objects/contact/options")
-
-    assert response.status_code == 200
-    body = response.get_json()
-    assert "countries" in body
-    assert "country_codes" in body
-
-
 def test_list_tags(client, contacts) -> None:
     response = client.get("/api/tags")
 

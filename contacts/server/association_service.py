@@ -109,6 +109,14 @@ def list_for(object_type: str, object_id: int) -> list[Object]:
 def related_ids(object_type: str, object_id: int, related_type: str) -> list[int]:
     """List the ids of one type of object associated with another object.
 
+    Direction-agnostic: it matches `related_type` on whichever side isn't
+    the given object, which is the right behavior for a peer-to-peer link
+    (e.g. two contacts associated with each other) where neither side is
+    "the container". Containment -- where one side always plays that role,
+    as with list membership -- needs `member_ids_of` instead; using this
+    for that would conflate "an object this container belongs to" with "a
+    member this container holds" whenever `object_type == related_type`.
+
     Args:
         object_type: The object's type.
         object_id: The object's id.
@@ -123,6 +131,41 @@ def related_ids(object_type: str, object_id: int, related_type: str) -> list[int
         other_type, other_id = other_side(association, object_type, object_id)
         if other_type == related_type:
             ids.append(other_id)
+
+    return ids
+
+
+def member_ids_of(
+    container_type: str, container_id: int, member_type: str
+) -> list[int]:
+    """List a container's member ids -- the side-2 end of every association
+    where side 1 is `(container_type, container_id)`.
+
+    Unlike `related_ids`, this only follows associations in the direction
+    they were created in (a container's membership association always has
+    the container on side 1 and the member on side 2 -- see
+    `list_service._reconcile`). That distinction only matters when
+    `container_type == member_type` (e.g. a list whose members are
+    themselves lists): `related_ids`'s "whichever side isn't me" lookup
+    can't otherwise tell "a container this object belongs to" apart from "a
+    member this container holds".
+
+    Args:
+        container_type: The container's type.
+        container_id: The container's id.
+        member_type: The type of member to collect.
+
+    Returns:
+        The member ids, in association order.
+    """
+    ids = []
+
+    for association in list_for(container_type, container_id):
+        if side(association, 1) != (container_type, container_id):
+            continue
+        member_side_type, member_id = side(association, 2)
+        if member_side_type == member_type:
+            ids.append(member_id)
 
     return ids
 

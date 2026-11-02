@@ -197,31 +197,3 @@ def test_extract_tags_dedupes_and_sorts() -> None:
     ]
 
     assert contact_utils.extract_tags(contacts) == ["a", "b", "c"]
-
-
-def test_extract_high_schools_collects_distinct_names() -> None:
-    contacts = [
-        contact_fixtures.build(education={"high_school": {"name": "NHS"}}),
-        contact_fixtures.build(education={"high_school": {"name": "NHS"}}),
-        contact_fixtures.build(education={"high_school": {"name": "LHS"}}),
-        contact_fixtures.build(),
-    ]
-
-    assert contact_utils.extract_high_schools(contacts) == ["LHS", "NHS"]
-
-
-def test_extract_universities_collects_every_level() -> None:
-    contacts = [
-        contact_fixtures.build(
-            education={"bachelor": {"name": "Bowdoin"}, "phd": {"name": "MIT"}}
-        ),
-        contact_fixtures.build(education={"master": {"name": "NU"}}),
-    ]
-
-    assert contact_utils.extract_universities(contacts) == ["Bowdoin", "MIT", "NU"]
-
-
-def test_extract_universities_ignores_high_schools() -> None:
-    contacts = [contact_fixtures.build(education={"high_school": {"name": "NHS"}})]
-
-    assert contact_utils.extract_universities(contacts) == []

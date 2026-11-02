@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import sqlite3
 import time
-from typing import cast
 
 from contacts.dao import disk_dao
 from contacts.logger import LOG
@@ -62,7 +61,7 @@ def member_ids(list_id: int) -> list[int]:
     """
     a_list = object_service.require_object(schema.TYPE_LIST, list_id)
 
-    return association_service.related_ids(
+    return association_service.member_ids_of(
         schema.TYPE_LIST, list_id, _member_type(a_list)
     )
 
@@ -83,17 +82,16 @@ def all_member_ids() -> dict[int, list[int]]:
     members_by_list: dict[int, list[int]] = {list_id: [] for list_id in lists}
 
     for association in object_service.list_objects(schema.TYPE_ASSOCIATION):
-        for index, other in ((1, 2), (2, 1)):
-            if association.get(f"object_type_{index}") != schema.TYPE_LIST:
-                continue
+        # Only side 1 is ever the container (see `_reconcile`) -- checking
+        # both sides here would also count a list as its own member whenever
+        # it's instead a *member* of another list of the same member_type.
+        container_type, container_id = association_service.side(association, 1)
+        if container_type != schema.TYPE_LIST or container_id not in lists:
+            continue
 
-            raw_list_id = association.get(f"object_id_{index}")
-            if raw_list_id not in lists:
-                continue
-            list_id = cast(int, raw_list_id)
-
-            if association.get(f"object_type_{other}") == lists[list_id]:
-                members_by_list[list_id].append(association[f"object_id_{other}"])
+        member_type, member_id = association_service.side(association, 2)
+        if member_type == lists[container_id]:
+            members_by_list[container_id].append(member_id)
 
     return members_by_list
 
@@ -115,7 +113,7 @@ def members(list_id: int) -> list[Object]:
     member_type = _member_type(a_list)
 
     found = []
-    for member_id in association_service.related_ids(
+    for member_id in association_service.member_ids_of(
         schema.TYPE_LIST, list_id, member_type
     ):
         member = disk_dao.read_object(member_type, member_id)
@@ -134,7 +132,7 @@ def _reconcile(a_list: Object, wanted_ids: list[int]) -> bool:
     list_id = a_list["id"]
     member_type = _member_type(a_list)
 
-    current_ids = association_service.related_ids(
+    current_ids = association_service.member_ids_of(
         schema.TYPE_LIST, list_id, member_type
     )
 
@@ -161,11 +159,15 @@ def _reconcile(a_list: Object, wanted_ids: list[int]) -> bool:
         )
 
     if stale:
+        # Only side 1 is ever the container -- otherwise, if member_type is
+        # also "list", an association where this list is instead the
+        # *member* side of some other list could be matched and deleted here.
+        stale_pairs = {(member_type, member_id) for member_id in stale}
         stale_association_ids = [
             association["id"]
             for association in association_service.list_for(schema.TYPE_LIST, list_id)
-            if association_service.other_side(association, schema.TYPE_LIST, list_id)
-            in {(member_type, member_id) for member_id in stale}
+            if association_service.side(association, 1) == (schema.TYPE_LIST, list_id)
+            and association_service.side(association, 2) in stale_pairs
         ]
         disk_dao.delete_objects(schema.TYPE_ASSOCIATION, stale_association_ids)
 
@@ -240,7 +242,7 @@ def add_members(list_id: int, member_ids_to_add: list[int]) -> list[int]:
     for member_id in member_ids_to_add:
         object_service.require_object(member_type, member_id)
 
-    current = association_service.related_ids(schema.TYPE_LIST, list_id, member_type)
+    current = association_service.member_ids_of(schema.TYPE_LIST, list_id, member_type)
     _reconcile(
         a_list,
         current + [i for i in member_ids_to_add if i not in set(current)],
@@ -265,7 +267,7 @@ def remove_members(list_id: int, member_ids_to_remove: list[int]) -> list[int]:
     a_list = object_service.require_object(schema.TYPE_LIST, list_id)
     member_type = _member_type(a_list)
 
-    current = association_service.related_ids(schema.TYPE_LIST, list_id, member_type)
+    current = association_service.member_ids_of(schema.TYPE_LIST, list_id, member_type)
     removing = set(member_ids_to_remove)
     _reconcile(a_list, [i for i in current if i not in removing])
 

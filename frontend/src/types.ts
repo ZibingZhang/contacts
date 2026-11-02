@@ -93,18 +93,6 @@ export interface TagCount {
   count: number;
 }
 
-export interface CountryCodeOption {
-  code: number;
-  label: string;
-}
-
-export interface ContactFieldOptions {
-  countries: string[];
-  country_codes: CountryCodeOption[];
-  high_schools: string[];
-  universities: string[];
-}
-
 // The generic object envelope every /api/objects/<type> endpoint returns.
 export interface ObjectsResponse<T> {
   objects: T[];
@@ -183,6 +171,11 @@ export type FieldType =
   | "object"
   | "any";
 
+export interface OptionPair {
+  value: string | number;
+  label: string;
+}
+
 export interface SchemaField {
   key: string;
   label: string;
@@ -194,9 +187,23 @@ export interface SchemaField {
   fields?: SchemaField[];
   options?: (string | number)[];
   options_from?: string;
+  // Server-resolved {value, label} pairs for a "select" field, covering
+  // both `options` and `options_from` -- always present on a select field
+  // in an API response, so the frontend never needs its own label tables.
+  resolved_options?: OptionPair[];
   ref_type?: string;
   unique?: boolean;
   order_by?: string;
+  // A named presentation hint for viewing this field's value (e.g. "chips",
+  // "link"); see contacts/model/schema.py's DISPLAY_KINDS for the full set.
+  // Purely cosmetic, consumed only by schema-form/fieldRows.tsx.
+  display?: string;
+  display_options?: Record<string, unknown>;
+  // Frontend-only: a composition-root overlay marking a field read-only in
+  // the edit form without hiding it (unlike `managed`, which strips it
+  // entirely) -- e.g. a list's member_type once the list exists. Never set
+  // by the backend.
+  readOnly?: boolean;
 }
 
 export interface SchemaObject {
@@ -205,6 +212,8 @@ export interface SchemaObject {
   label: string;
   fields: SchemaField[];
   builtin?: boolean;
+  // The key of the top-level field to use as an object's display title.
+  title_field?: string;
   ctime?: number;
   mtime?: number;
 }

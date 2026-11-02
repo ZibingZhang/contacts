@@ -128,6 +128,27 @@ def test_validate_object_rejects_a_value_outside_a_named_option_source():
         schema.validate_object(widget, {"code": 999})
 
 
+def test_option_pairs_labels_explicit_options_with_themselves():
+    field = Field("size", "Size", "select", options=["s", "l"])
+
+    assert field.option_pairs() == [
+        {"value": "s", "label": "s"},
+        {"value": "l", "label": "l"},
+    ]
+
+
+def test_option_pairs_resolves_labels_from_a_named_source():
+    field = Field("code", "Code", "select", options_from="country_code")
+
+    assert {"value": 1, "label": "United States/Canada"} in field.option_pairs()
+
+
+def test_option_pairs_is_empty_for_a_non_select_field():
+    field = Field("name", "Name", "text")
+
+    assert field.option_pairs() == []
+
+
 def test_validate_object_rejects_a_scalar_where_many_expects_a_list():
     widget = build_schema(Field("tags", "Tags", "text", many=True))
 
@@ -240,6 +261,29 @@ def test_validate_schema_rejects_the_reserved_name_schema():
         )
 
 
+def test_validate_schema_parses_a_title_field():
+    parsed = schema.validate_schema(
+        {
+            "name": "company",
+            "fields": [{"key": "n", "type": "text"}],
+            "title_field": "n",
+        }
+    )
+
+    assert parsed.title_field == "n"
+
+
+def test_validate_schema_rejects_a_title_field_that_is_not_one_of_its_fields():
+    with pytest.raises(schema.SchemaError, match="title_field 'missing'"):
+        schema.validate_schema(
+            {
+                "name": "company",
+                "fields": [{"key": "n", "type": "text"}],
+                "title_field": "missing",
+            }
+        )
+
+
 def test_validate_schema_rejects_an_empty_field_list():
     with pytest.raises(schema.SchemaError, match="fields must be a non-empty list"):
         schema.validate_schema({"name": "company", "fields": []})
@@ -334,6 +378,76 @@ def test_validate_schema_rejects_a_ref_type_on_a_non_reference_field():
                 "fields": [{"key": "n", "type": "text", "ref_type": "contact"}],
             }
         )
+
+
+def test_validate_schema_parses_a_known_display_kind():
+    parsed = schema.validate_schema(
+        {
+            "name": "company",
+            "fields": [{"key": "n", "type": "text", "many": True, "display": "chips"}],
+        }
+    )
+
+    assert parsed.fields[0].display == "chips"
+
+
+def test_validate_schema_rejects_an_unknown_display_kind():
+    with pytest.raises(schema.SchemaError, match="unknown display"):
+        schema.validate_schema(
+            {
+                "name": "company",
+                "fields": [{"key": "n", "type": "text", "display": "sparkles"}],
+            }
+        )
+
+
+def test_validate_schema_rejects_display_options_without_display():
+    with pytest.raises(schema.SchemaError, match="display_options requires display"):
+        schema.validate_schema(
+            {
+                "name": "company",
+                "fields": [
+                    {"key": "n", "type": "text", "display_options": {"template": "x"}}
+                ],
+            }
+        )
+
+
+def test_validate_schema_rejects_non_dict_display_options():
+    with pytest.raises(schema.SchemaError, match="display_options must be an object"):
+        schema.validate_schema(
+            {
+                "name": "company",
+                "fields": [
+                    {
+                        "key": "n",
+                        "type": "text",
+                        "display": "template",
+                        "display_options": "nope",
+                    }
+                ],
+            }
+        )
+
+
+def test_validate_schema_round_trips_display_options():
+    parsed = schema.validate_schema(
+        {
+            "name": "company",
+            "fields": [
+                {
+                    "key": "n",
+                    "type": "text",
+                    "display": "link",
+                    "display_options": {"href_template": "https://x/{n}"},
+                }
+            ],
+        }
+    )
+
+    assert parsed.fields[0].to_dict()["display_options"] == {
+        "href_template": "https://x/{n}"
+    }
 
 
 def test_apply_defaults_fills_an_absent_top_level_field():

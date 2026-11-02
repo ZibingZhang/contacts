@@ -63,6 +63,42 @@ def test_get_schema_raises_for_an_unknown_type() -> None:
         schema_service.get_schema("widget")
 
 
+def test_get_schema_object_includes_the_builtin_title_field() -> None:
+    assert schema_service.get_schema_object(model.TYPE_CONTACT)["title_field"] == "name"
+
+
+def test_get_schema_object_resolves_a_nested_select_fields_options() -> None:
+    contact_schema = schema_service.get_schema_object(model.TYPE_CONTACT)
+    phone_numbers = next(
+        field for field in contact_schema["fields"] if field["key"] == "phone_numbers"
+    )
+    country_code = next(
+        field for field in phone_numbers["fields"] if field["key"] == "country_code"
+    )
+
+    assert {"value": 1, "label": "United States/Canada"} in country_code[
+        "resolved_options"
+    ]
+
+
+def test_create_schema_resolves_a_select_fields_options() -> None:
+    created = schema_service.create_schema(
+        {
+            **COMPANY_SCHEMA,
+            "fields": [
+                *COMPANY_SCHEMA["fields"],
+                {"key": "size", "type": "select", "options": ["small", "large"]},
+            ],
+        }
+    )
+
+    size = next(field for field in created["fields"] if field["key"] == "size")
+    assert size["resolved_options"] == [
+        {"value": "small", "label": "small"},
+        {"value": "large", "label": "large"},
+    ]
+
+
 def test_find_schema_returns_none_for_an_unknown_type() -> None:
     assert schema_service.find_schema("widget") is None
 

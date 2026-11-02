@@ -3,7 +3,6 @@ import type {
   AssociationsResponse,
   BatchAddTagsResponse,
   Contact,
-  ContactFieldOptions,
   ContactsResponse,
   ListMemberIdsResponse,
   ListObject,
@@ -138,10 +137,6 @@ export function fetchContacts(): Promise<ContactsResponse> {
 
 export function fetchTags(): Promise<TagsResponse> {
   return apiGet<TagsResponse>("/tags");
-}
-
-export function fetchContactFieldOptions(): Promise<ContactFieldOptions> {
-  return apiGet<ContactFieldOptions>("/objects/contact/options");
 }
 
 export function createContact(payload: Record<string, unknown>): Promise<Contact> {

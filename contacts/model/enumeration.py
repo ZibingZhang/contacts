@@ -13,6 +13,11 @@ class Country(enum.StrEnum):
     def values() -> list[str]:
         return [item for item in Country]
 
+    @staticmethod
+    @functools.cache
+    def labeled_values() -> list[dict]:
+        return [{"value": item.value, "label": item.value} for item in Country]
+
 
 class CountryCode(enum.IntEnum):
     NANP = 1
@@ -35,3 +40,18 @@ class CountryCode(enum.IntEnum):
     @functools.cache
     def values() -> list[int]:
         return [item for item in CountryCode]
+
+    @staticmethod
+    @functools.cache
+    def labeled_values() -> list[dict]:
+        return [
+            {
+                "value": int(code),
+                "label": (
+                    "United States/Canada"
+                    if code is CountryCode.NANP
+                    else code.name.replace("_", " ").title()
+                ),
+            }
+            for code in CountryCode
+        ]

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { SyncDirection } from "./SyncReviewModal";
+import { TypeNav } from "./TypeNav";
 import { useThemeSettings, type AppearanceMode } from "../theme/ThemeSettingsContext";
 import { PALETTE_LABELS, type PaletteName } from "../theme/palettes";
 import Box from "@mui/material/Box";
@@ -86,15 +87,18 @@ function AppearanceMenu() {
   );
 }
 
-export type AppView = "contacts" | "lists" | "birthdays";
-
 interface TopBarProps {
-  view: AppView;
-  onSelectView: (view: AppView) => void;
+  // The type currently being browsed (e.g. "contact", "list", or any custom
+  // type), or null while on the birthdays calendar.
+  typeName: string | null;
+  onSelectType: (typeName: string) => void;
   sidebarCollapsed: boolean;
   onToggleSidebarCollapsed: () => void;
   onNewContact: () => void;
   onNewList: () => void;
+  // Shown only when `typeName` is neither "contact" nor "list".
+  genericTypeLabel?: string;
+  onNewGenericObject?: () => void;
   selectionMode: boolean;
   onToggleSelectionMode: () => void;
   selectedCount: number;
@@ -107,15 +111,19 @@ interface TopBarProps {
   onPull: () => void;
   onPush: () => void;
   onOpenAdminConsole: () => void;
+  onToggleBirthdays: () => void;
+  isBirthdays: boolean;
 }
 
 export function TopBar({
-  view,
-  onSelectView,
+  typeName,
+  onSelectType,
   sidebarCollapsed,
   onToggleSidebarCollapsed,
   onNewContact,
   onNewList,
+  genericTypeLabel,
+  onNewGenericObject,
   selectionMode,
   onToggleSelectionMode,
   selectedCount,
@@ -128,8 +136,11 @@ export function TopBar({
   onPull,
   onPush,
   onOpenAdminConsole,
+  onToggleBirthdays,
+  isBirthdays,
 }: TopBarProps) {
-  const isContactsView = view === "contacts";
+  const isContactsView = typeName === "contact";
+  const isListsView = typeName === "list";
   return (
     <Box
       id="top-bar"
@@ -161,11 +172,16 @@ export function TopBar({
         <Button id="new-contact-button" size="small" variant="contained" onClick={onNewContact}>
           New Contact
         </Button>
-      ) : (
+      ) : isListsView ? (
         <Button id="new-list-button" size="small" variant="contained" onClick={onNewList}>
           New List
         </Button>
-      )}
+      ) : genericTypeLabel && onNewGenericObject ? (
+        <Button size="small" variant="contained" onClick={onNewGenericObject}>
+          New {genericTypeLabel}
+        </Button>
+      ) : null}
+      <TypeNav currentTypeName={typeName} onSelectType={onSelectType} />
       {isContactsView && (
         <Button
           id="selection-mode-toggle"
@@ -220,26 +236,26 @@ export function TopBar({
           </Tooltip>
         </>
       )}
-      <Tooltip title={view === "lists" ? "Switch to Contacts" : "Switch to Lists"}>
+      <Tooltip title={isListsView ? "Switch to Contacts" : "Switch to Lists"}>
         <IconButton
           id="lists-view-toggle"
           size="small"
           aria-label="Toggle Lists view"
-          aria-pressed={view === "lists"}
-          color={view === "lists" ? "primary" : "default"}
-          onClick={() => onSelectView(view === "lists" ? "contacts" : "lists")}
+          aria-pressed={isListsView}
+          color={isListsView ? "primary" : "default"}
+          onClick={() => onSelectType(isListsView ? "contact" : "list")}
         >
           <GroupsIcon fontSize="small" />
         </IconButton>
       </Tooltip>
-      <Tooltip title={view === "birthdays" ? "Switch to Contacts" : "View birthday calendar"}>
+      <Tooltip title={isBirthdays ? "Switch to Contacts" : "View birthday calendar"}>
         <IconButton
           id="birthdays-view-toggle"
           size="small"
           aria-label="Toggle Birthdays view"
-          aria-pressed={view === "birthdays"}
-          color={view === "birthdays" ? "primary" : "default"}
-          onClick={() => onSelectView(view === "birthdays" ? "contacts" : "birthdays")}
+          aria-pressed={isBirthdays}
+          color={isBirthdays ? "primary" : "default"}
+          onClick={onToggleBirthdays}
         >
           <CakeIcon fontSize="small" />
         </IconButton>

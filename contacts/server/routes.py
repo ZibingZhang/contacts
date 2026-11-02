@@ -121,11 +121,6 @@ def delete_object(object_type: str, object_id: int):
 # -- Contacts: aggregates the UI needs -------------------------------------
 
 
-@bp.get("/objects/contact/options")
-def contact_options():
-    return jsonify(service.list_contact_field_options())
-
-
 @bp.get("/tags")
 def list_tags():
     return jsonify({"tags": service.list_tags()})

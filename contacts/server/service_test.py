@@ -182,28 +182,6 @@ def test_add_tags_to_contacts_missing_id_raises(monkeypatch, contacts) -> None:
         service.add_tags_to_contacts([999], ["C"])
 
 
-def test_list_contact_field_options(monkeypatch) -> None:
-    stub_disk(
-        monkeypatch,
-        [
-            contact_fixtures.build(
-                id=1,
-                education={
-                    "high_school": {"name": "NHS"},
-                    "bachelor": {"name": "Bowdoin"},
-                },
-            )
-        ],
-    )
-
-    options = service.list_contact_field_options()
-
-    assert options["high_schools"] == ["NHS"]
-    assert options["universities"] == ["Bowdoin"]
-    assert "United States" in options["countries"]
-    assert {"code": 1, "label": "United States/Canada"} in options["country_codes"]
-
-
 # -- Pull from iCloud ------------------------------------------------------
 
 

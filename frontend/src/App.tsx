@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   fetchContacts,
   fetchTags,
   fetchLists,
   fetchAllListMemberIds,
   refreshLists,
+  refreshList,
   fetchSchemas,
+  fetchSchema,
+  fetchObjects,
   batchAddTags,
   startSync,
   submitSyncDevice,
@@ -21,6 +25,8 @@ import {
 import type {
   Contact,
   ListObject,
+  SchemaField,
+  SchemaObject,
   TagCount,
   SyncRequiresVerification,
   SyncReview,
@@ -31,20 +37,29 @@ import { sameFilter, type SelectedFilter } from "./filters";
 import { useDebouncedValue, useFilteredContactIds, isTypingTarget } from "./hooks";
 import { Sidebar, type ListStatus } from "./components/Sidebar";
 import { ListsNav } from "./components/ListsNav";
-import { ListsPanel } from "./components/ListsPanel";
-import { ListDetail } from "./components/ListDetail";
-import { ListForm } from "./components/ListForm";
-import { TopBar, type AppView } from "./components/TopBar";
-import { ContactDetail } from "./components/ContactDetail";
+import { TypeObjectList } from "./components/TypeObjectList";
+import { TopBar } from "./components/TopBar";
 import { BirthdayView } from "./components/BirthdayView";
 import { BatchTagModal } from "./components/BatchTagModal";
-import { ContactForm } from "./components/ContactForm";
 import { SyncVerificationModal } from "./components/SyncVerificationModal";
 import { SyncReviewModal, type SyncDirection } from "./components/SyncReviewModal";
 import { AdminConsoleModal } from "./components/AdminConsoleModal";
+import { SchemaDetail, type SchemaObjectData } from "./schema-form/SchemaDetail";
+import { ListMembersSection } from "./schema-form/ListMembersSection";
+import { SchemaForm, type SavedObject } from "./schema-form/SchemaForm";
+import { NavigateToObjectContext } from "./schema-form/navigation";
+import { buildDisplayName, initials } from "./format";
+import type { ReactNode } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
+import Button from "@mui/material/Button";
+import Tooltip from "@mui/material/Tooltip";
+import IconButton from "@mui/material/IconButton";
+import CircularProgress from "@mui/material/CircularProgress";
+import Avatar from "@mui/material/Avatar";
+import Chip from "@mui/material/Chip";
+import SyncIcon from "@mui/icons-material/Sync";
 
 function networkErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -54,6 +69,31 @@ function networkErrorMessage(error: unknown): string {
 }
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "contacts.sidebar.collapsed";
+
+// The one per-type cosmetic hook in the generic renderer: a contact's
+// header keeps its avatar/initials and composed display name rather than
+// going fully plain like every other type's title. Pure/stateless, so it
+// lives outside the component rather than as a `useCallback`.
+function renderContactHeader(contact: Contact): ReactNode {
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
+      <Avatar sx={{ width: 64, height: 64, fontSize: "1.25rem", fontWeight: 600 }}>{initials(contact.name)}</Avatar>
+      <Box>
+        <Typography variant="h5" sx={{ mb: 0.5 }}>
+          {buildDisplayName(contact.name) || `Contact ${contact.id}`}
+        </Typography>
+        {contact.name?.chinese_name && <Typography color="text.secondary">{contact.name.chinese_name}</Typography>}
+        {contact.tags && contact.tags.length > 0 && (
+          <Box sx={{ mt: 1, display: "flex", gap: 0.5, flexWrap: "wrap" }}>
+            {contact.tags.map((tag) => (
+              <Chip label={tag} size="small" key={tag} />
+            ))}
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+}
 
 /** JSON object keys are strings, so turn them back into list ids. */
 function parseMemberIds(raw: Record<string, number[]>): Record<number, number[]> {
@@ -68,33 +108,27 @@ function readStoredSidebarCollapsed(): boolean {
   return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
 }
 
-function paramsFromLocation(): {
-  query: string;
-  filters: SelectedFilter[];
-  contactId: number | null;
-  listId: number | null;
-  view: AppView;
-} {
-  const params = new URLSearchParams(window.location.search);
+// The route shape is `/types/:typeName/:id?` for every browsable type
+// (contact, list, or custom) plus `/birthdays` for the calendar. Parsed by
+// hand rather than via react-router's `useParams` because `App` is mounted
+// at one catch-all route (see main.tsx) so it never unmounts/remounts the
+// app-wide state (contacts, tags, sync modals, ...) as the path changes.
+function parseAppPath(pathname: string): { typeName: string; id: number | null } {
+  const match = pathname.match(/^\/types\/([^/]+)(?:\/(\d+))?\/?$/);
+  if (!match) {
+    return { typeName: "contact", id: null };
+  }
+  return { typeName: match[1], id: match[2] ? Number(match[2]) : null };
+}
+
+function filtersFromSearchParams(searchParams: URLSearchParams): SelectedFilter[] {
   const filters: SelectedFilter[] = [];
-  for (const raw of params.getAll("filter")) {
+  for (const raw of searchParams.getAll("filter")) {
     const separatorIndex = raw.indexOf("=");
     if (separatorIndex === -1) continue;
     filters.push({ field: raw.slice(0, separatorIndex), value: raw.slice(separatorIndex + 1) });
   }
-  const contactParam = params.get("contact");
-  const contactId = contactParam !== null && /^\d+$/.test(contactParam) ? Number(contactParam) : null;
-  const listParam = params.get("list");
-  const listId = listParam !== null && /^\d+$/.test(listParam) ? Number(listParam) : null;
-  const viewParam = params.get("view");
-  const view: AppView = viewParam === "lists" || viewParam === "birthdays" ? viewParam : "contacts";
-  return {
-    query: params.get("q") ?? "",
-    filters,
-    view,
-    contactId,
-    listId,
-  };
+  return filters;
 }
 
 interface SyncApi {
@@ -110,6 +144,48 @@ const SYNC_API: Record<SyncDirection, SyncApi> = {
 };
 
 export function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const isBirthdays = location.pathname === "/birthdays";
+  const { typeName, id: routeId } = parseAppPath(location.pathname);
+  const selectedContactId = typeName === "contact" ? routeId : null;
+  const selectedListId = typeName === "list" ? routeId : null;
+  // Which list scopes the contacts sidebar -- independent of `selectedListId`
+  // (the Lists type-browser's own selection), since scoping is a filter on
+  // the *contacts* route, not a navigation to the list's own detail page.
+  const scopingListIdRaw = searchParams.get("list");
+  const scopingListId = scopingListIdRaw && /^\d+$/.test(scopingListIdRaw) ? Number(scopingListIdRaw) : null;
+  const searchQuery = searchParams.get("q") ?? "";
+  const selectedFilters = useMemo(() => filtersFromSearchParams(searchParams), [searchParams]);
+
+  function setSearchQuery(value: string) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) next.set("q", value);
+        else next.delete("q");
+        return next;
+      },
+      { replace: true }
+    );
+  }
+
+  function setSelectedFilters(updater: SelectedFilter[] | ((prev: SelectedFilter[]) => SelectedFilter[])) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        const current = filtersFromSearchParams(prev);
+        const updated = typeof updater === "function" ? updater(current) : updater;
+        next.delete("filter");
+        for (const filter of updated) next.append("filter", `${filter.field}=${filter.value}`);
+        return next;
+      },
+      { replace: true }
+    );
+  }
+
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
   const [lists, setLists] = useState<ListObject[]>([]);
@@ -117,13 +193,12 @@ export function App() {
   // since membership now lives in associations rather than on the list.
   const [listMemberIds, setListMemberIds] = useState<Record<number, number[]>>({});
   const [memberTypes, setMemberTypes] = useState<string[]>(["contact"]);
+  const [listSchema, setListSchema] = useState<SchemaObject | null>(null);
+  const [contactSchema, setContactSchema] = useState<SchemaObject | null>(null);
   const [listsRefreshing, setListsRefreshing] = useState(false);
-  const [selectedListId, setSelectedListId] = useState<number | null>(() => paramsFromLocation().listId);
+  const [selectedListRefreshing, setSelectedListRefreshing] = useState(false);
+  const [selectedListRefreshError, setSelectedListRefreshError] = useState<string | null>(null);
   const [editingListId, setEditingListId] = useState<number | "new" | null>(null);
-  const [view, setView] = useState<AppView>(() => paramsFromLocation().view);
-  const [selectedFilters, setSelectedFilters] = useState<SelectedFilter[]>(() => paramsFromLocation().filters);
-  const [searchQuery, setSearchQuery] = useState(() => paramsFromLocation().query);
-  const [selectedContactId, setSelectedContactId] = useState<number | null>(() => paramsFromLocation().contactId);
   const [listStatus, setListStatus] = useState<ListStatus>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -140,24 +215,55 @@ export function App() {
   const [showAdminConsole, setShowAdminConsole] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
 
+  // Browsing state for any type that isn't "contact" or "list" -- the
+  // generic type browser. Separate from `lists`' own state above (which
+  // predates this and has list-specific needs layered on top, like
+  // `listMemberIds`) rather than unifying the two, to avoid risking the
+  // already-working list path while adding this.
+  const isGenericType = !isBirthdays && typeName !== "contact" && typeName !== "list";
+  const [genericSchema, setGenericSchema] = useState<SchemaObject | null>(null);
+  const [genericObjects, setGenericObjects] = useState<SavedObject[]>([]);
+  const [editingGenericId, setEditingGenericId] = useState<number | "new" | null>(null);
+
   useEffect(() => {
     localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
+  // Leaving an edit/create form behind when navigating to a different path
+  // (a different object, a different type, back/forward, ...) rather than
+  // leaving it stranded showing stale data.
+  useEffect(() => {
+    setEditingContactId(null);
+    setCopySourceContact(null);
+    setEditingListId(null);
+    setEditingGenericId(null);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!isGenericType) {
+      setGenericSchema(null);
+      setGenericObjects([]);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([fetchSchema(typeName), fetchObjects<SavedObject>(typeName)])
+      .then(([schemaData, objectsData]) => {
+        if (cancelled) return;
+        setGenericSchema(schemaData);
+        setGenericObjects(objectsData.objects);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setGenericSchema(null);
+        setGenericObjects([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isGenericType, typeName]);
+
   const listRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  // Tracks the contact id the URL was last synced with, so the history
-  // effect can tell "navigated to a different contact" (push, so back/
-  // forward moves through contacts viewed) apart from "search/filter
-  // changed while on the same contact" (replace, so typing doesn't spam
-  // history).
-  const syncedContactIdRef = useRef<number | null>(selectedContactId);
-  // Same idea as syncedContactIdRef, but for the selected list -- switching
-  // which list scopes/is shown pushes a history entry (like switching a
-  // mailbox folder), so back/forward moves between lists too.
-  const syncedListIdRef = useRef<number | null>(selectedListId);
-  // ...and for the top-level contacts/lists view itself.
-  const syncedViewRef = useRef<AppView>(view);
 
   useEffect(() => {
     let cancelled = false;
@@ -231,6 +337,49 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchSchema("list")
+      .then((schema) => {
+        if (!cancelled) setListSchema(schema);
+      })
+      .catch(() => {
+        // The lists view shows an error state while this is missing.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchSchema("contact")
+      .then((schema) => {
+        if (!cancelled) setContactSchema(schema);
+      })
+      .catch(() => {
+        // The contacts view shows an error state while this is missing.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Overlays `member_type` on top of the plain schema: a `select` fed by the
+  // live type registry when creating a list, read-only once it exists (a
+  // list's member_type can't change after creation). SchemaForm itself has
+  // no idea member_type is special.
+  const overlayListFields = useCallback(
+    (fields: SchemaField[], isEditing: boolean): SchemaField[] =>
+      fields.map((field) => {
+        if (field.key !== "member_type") return field;
+        return isEditing
+          ? { ...field, readOnly: true }
+          : { ...field, type: "select", resolved_options: memberTypes.map((type) => ({ value: type, label: type })) };
+      }),
+    [memberTypes]
+  );
+
   async function handleRefreshLists() {
     setListsRefreshing(true);
     try {
@@ -245,81 +394,25 @@ export function App() {
     }
   }
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (searchQuery) {
-      params.set("q", searchQuery);
-    } else {
-      params.delete("q");
-    }
-    params.delete("filter");
-    for (const filter of selectedFilters) {
-      params.append("filter", `${filter.field}=${filter.value}`);
-    }
-    if (selectedContactId !== null) {
-      params.set("contact", String(selectedContactId));
-    } else {
-      params.delete("contact");
-    }
-    if (selectedListId !== null) {
-      params.set("list", String(selectedListId));
-    } else {
-      params.delete("list");
-    }
-    if (view === "lists" || view === "birthdays") {
-      params.set("view", view);
-    } else {
-      params.delete("view");
-    }
-    const queryString = params.toString();
-    const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ""}${window.location.hash}`;
-    if (
-      selectedContactId !== syncedContactIdRef.current ||
-      selectedListId !== syncedListIdRef.current ||
-      view !== syncedViewRef.current
-    ) {
-      window.history.pushState(null, "", newUrl);
-    } else {
-      window.history.replaceState(null, "", newUrl);
-    }
-    syncedContactIdRef.current = selectedContactId;
-    syncedListIdRef.current = selectedListId;
-    syncedViewRef.current = view;
-  }, [searchQuery, selectedFilters, selectedContactId, selectedListId, view]);
+  // react-router keeps the URL in sync with navigation automatically, and
+  // re-renders with the new location on back/forward -- no manual
+  // pushState/popstate bookkeeping needed (see main.tsx for why `App` is
+  // still only ever one component instance across all of that).
 
-  // Restores search/filter/selection state when the user navigates with the
-  // browser's back/forward buttons.
-  useEffect(() => {
-    function handlePopState() {
-      const { query, filters, contactId, listId, view: poppedView } = paramsFromLocation();
-      syncedContactIdRef.current = contactId;
-      syncedListIdRef.current = listId;
-      syncedViewRef.current = poppedView;
-      setSearchQuery(query);
-      setSelectedFilters(filters);
-      setSelectedContactId(contactId);
-      setSelectedListId(listId);
-      setView(poppedView);
-      setEditingContactId(null);
-      setCopySourceContact(null);
-      setEditingListId(null);
-    }
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
-
-  // The current "view" -- all contacts, or just the selected list's members
-  // -- that search/filters/the alpha index all then narrow further. A
-  // missing/deleted list falls back to all contacts rather than showing an
-  // empty list.
+  // The list that scopes the contacts sidebar -- the current "view" that
+  // search/filters/the alpha index all then narrow further. A missing/
+  // deleted list falls back to all contacts rather than showing an empty
+  // list. Distinct from `selectedListId` (the Lists type-browser's own
+  // selection) -- see where `scopingListId` is derived above.
   const selectedList = lists.find((list) => list.id === selectedListId) ?? null;
+  const scopingList = lists.find((list) => list.id === scopingListId) ?? null;
   const scopedContacts = useMemo(() => {
-    if (selectedList === null) {
+    if (scopingList === null) {
       return contacts;
     }
-    const idSet = new Set(listMemberIds[selectedList.id] ?? []);
+    const idSet = new Set(listMemberIds[scopingList.id] ?? []);
     return contacts.filter((contact) => idSet.has(contact.id));
-  }, [contacts, selectedList, listMemberIds]);
+  }, [contacts, scopingList, listMemberIds]);
 
   // Debounced so fast typing doesn't kick off a filter pass per keystroke;
   // the actual filtering then runs in a Web Worker, off the main thread.
@@ -396,7 +489,7 @@ export function App() {
       return;
     }
     const nextContact = visibleContacts[nextIndex];
-    setSelectedContactId(nextContact.id);
+    handleSelectContact(nextContact.id);
     findListItem(nextContact.id)?.scrollIntoView({ block: "nearest" });
   }
 
@@ -407,7 +500,7 @@ export function App() {
       return;
     }
     const contact = position === "first" ? visibleContacts[0] : visibleContacts[visibleContacts.length - 1];
-    setSelectedContactId(contact.id);
+    handleSelectContact(contact.id);
     const item = findListItem(contact.id);
     if (!item) {
       return;
@@ -450,22 +543,29 @@ export function App() {
       } else if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey && !isTypingTarget(event.target)) {
         event.preventDefault();
         document.getElementById("search-input")?.focus();
+      } else if (
+        (event.key === "c" || event.key === "C") &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !isTypingTarget(event.target) &&
+        selectedContact
+      ) {
+        event.preventDefault();
+        handleCopyContact(selectedContact);
       }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [visibleContacts, selectedContactId, editingContactId]);
+  }, [visibleContacts, selectedContactId, editingContactId, selectedContact]);
 
-  // Switching views (like switching a mailbox folder) resets the search/
-  // filter/selection state scoped to the previous view, rather than
-  // carrying it over into the new one.
+  // Scoping the contacts sidebar to a list (like switching a mailbox
+  // folder) resets the search/filter/selection state, rather than carrying
+  // it over from whatever was previously scoped.
   function handleSelectList(listId: number | null) {
-    setSelectedListId(listId);
-    setSearchQuery("");
-    setSelectedFilters([]);
-    setSelectedContactId(null);
-    setEditingContactId(null);
-    setCopySourceContact(null);
+    const next = new URLSearchParams();
+    if (listId !== null) next.set("list", String(listId));
+    navigate({ pathname: "/types/contact", search: next.toString() });
     setSelectionMode(false);
     setSelectedIds(new Set());
   }
@@ -577,9 +677,9 @@ export function App() {
       const exists = prev.some((c) => c.id === contact.id);
       return exists ? prev.map((c) => (c.id === contact.id ? contact : c)) : [...prev, contact];
     });
-    setSelectedContactId(contact.id);
     setEditingContactId(null);
     setCopySourceContact(null);
+    navigate({ pathname: `/types/contact/${contact.id}`, search: location.search });
     try {
       const tagsData = await fetchTags();
       setTags(tagsData.tags);
@@ -587,10 +687,6 @@ export function App() {
       // Keep the existing tag list if the refresh fails; it'll catch up
       // next time tags are reloaded.
     }
-  }
-
-  function handleSelectView(nextView: AppView) {
-    setView(nextView);
   }
 
   function handleNewList() {
@@ -608,8 +704,19 @@ export function App() {
     } catch {
       // Counts will catch up on the next load.
     }
-    setSelectedListId(list.id);
     setEditingListId(null);
+    navigate(`/types/list/${list.id}`);
+  }
+
+  // Re-reads every list's membership -- used after the generic Lists
+  // section changes membership from the non-list side, which the
+  // list-specific handlers above don't otherwise observe.
+  function refreshListMemberIds() {
+    fetchAllListMemberIds()
+      .then((data) => setListMemberIds(parseMemberIds(data.member_ids)))
+      .catch(() => {
+        // Counts will catch up on the next load.
+      });
   }
 
   function handleListRefreshed(list: ListObject) {
@@ -621,21 +728,45 @@ export function App() {
       });
   }
 
+  async function handleRefreshSelectedList(listId: number) {
+    if (selectedListRefreshing) return;
+    setSelectedListRefreshing(true);
+    setSelectedListRefreshError(null);
+    try {
+      handleListRefreshed(await refreshList(listId));
+    } catch (err) {
+      setSelectedListRefreshError(err instanceof ApiError ? err.message : "Failed to refresh list");
+    } finally {
+      setSelectedListRefreshing(false);
+    }
+  }
+
   // Stable identity so it doesn't defeat ContactList's memoization on every
-  // keystroke in the search box.
-  const handleSelectContact = useCallback((id: number) => {
-    setEditingContactId(null);
-    setCopySourceContact(null);
-    setSelectedContactId(id);
-  }, []);
+  // keystroke in the search box. Preserves the current search/filter/list
+  // scoping query params -- only the selected contact itself changes.
+  const handleSelectContact = useCallback(
+    (id: number) => {
+      navigate({ pathname: `/types/contact/${id}`, search: location.search });
+    },
+    [navigate, location.search]
+  );
 
   // Jumps from the birthdays calendar straight to a contact's detail view.
   const handleSelectContactFromBirthdays = useCallback(
     (id: number) => {
-      setView("contacts");
-      handleSelectContact(id);
+      navigate(`/types/contact/${id}`);
     },
-    [handleSelectContact]
+    [navigate]
+  );
+
+  // How the generic renderer (reference fields, the Lists section, list
+  // member rows) navigates to another object -- generic by construction,
+  // since every type (including "list") is just `/types/<name>/<id>` now.
+  const navigateToObject = useCallback(
+    (objectType: string, id: number) => {
+      navigate(`/types/${objectType}/${id}`);
+    },
+    [navigate]
   );
 
   function handleCopyContact(contact: Contact) {
@@ -667,10 +798,13 @@ export function App() {
   }
 
   return (
+    <NavigateToObjectContext.Provider value={navigateToObject}>
     <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <TopBar
-        view={view}
-        onSelectView={handleSelectView}
+        typeName={isBirthdays ? null : typeName}
+        onSelectType={(nextTypeName) => navigate(`/types/${nextTypeName}`)}
+        isBirthdays={isBirthdays}
+        onToggleBirthdays={() => navigate(isBirthdays ? "/types/contact" : "/birthdays")}
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebarCollapsed={() => setSidebarCollapsed((prev) => !prev)}
         onNewContact={() => {
@@ -678,6 +812,8 @@ export function App() {
           setEditingContactId("new");
         }}
         onNewList={handleNewList}
+        genericTypeLabel={isGenericType ? genericSchema?.label : undefined}
+        onNewGenericObject={isGenericType ? () => setEditingGenericId("new") : undefined}
         selectionMode={selectionMode}
         onToggleSelectionMode={toggleSelectionMode}
         selectedCount={selectedIds.size}
@@ -692,13 +828,15 @@ export function App() {
         onOpenAdminConsole={() => setShowAdminConsole(true)}
       />
 
-      {view === "contacts" ? (
+      {isBirthdays ? (
+        <BirthdayView contacts={contacts} onSelectContact={handleSelectContactFromBirthdays} />
+      ) : typeName === "contact" ? (
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
           {!sidebarCollapsed && (
             <ListsNav
               lists={lists}
               memberIds={listMemberIds}
-              selectedListId={selectedListId}
+              selectedListId={scopingListId}
               onSelectList={handleSelectList}
               totalContactCount={contacts.length}
               refreshing={listsRefreshing}
@@ -736,25 +874,41 @@ export function App() {
           )}
 
           <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
-            {editingContactId !== null ? (
-              <ContactForm
+            {!contactSchema ? (
+              <Alert severity="error" sx={{ mt: 4 }}>
+                Could not load the contact schema.
+              </Alert>
+            ) : editingContactId !== null ? (
+              <SchemaForm
                 key={editingContactId}
-                contact={editingContactId === "new" ? null : contacts.find((c) => c.id === editingContactId) ?? null}
-                prefillFrom={editingContactId === "new" ? copySourceContact : null}
-                allTags={tags}
+                schema={contactSchema}
+                value={
+                  editingContactId === "new"
+                    ? null
+                    : (contacts.find((c) => c.id === editingContactId) as unknown as SavedObject | undefined) ?? null
+                }
+                initialDraft={editingContactId === "new" ? (copySourceContact as unknown as Record<string, unknown>) ?? undefined : undefined}
                 onCancel={() => {
                   setEditingContactId(null);
                   setCopySourceContact(null);
                 }}
-                onSaved={handleContactSaved}
+                onSaved={(saved) => handleContactSaved(saved as unknown as Contact)}
               />
             ) : (
               <Box sx={{ pt: 4 }}>
                 {selectedContact ? (
-                  <ContactDetail
-                    contact={selectedContact}
+                  <SchemaDetail
+                    key={selectedContact.id}
+                    schema={contactSchema}
+                    data={selectedContact as unknown as SchemaObjectData}
                     onEdit={() => setEditingContactId(selectedContact.id)}
-                    onCopy={() => handleCopyContact(selectedContact)}
+                    onListsChanged={refreshListMemberIds}
+                    renderHeader={() => renderContactHeader(selectedContact)}
+                    extraActions={
+                      <Button variant="outlined" size="small" onClick={() => handleCopyContact(selectedContact)}>
+                        Copy
+                      </Button>
+                    }
                   />
                 ) : selectedContactId !== null ? (
                   <Alert severity="error">Contact not found.</Alert>
@@ -765,47 +919,129 @@ export function App() {
             )}
           </Box>
         </Box>
-      ) : view === "birthdays" ? (
-        <BirthdayView contacts={contacts} onSelectContact={handleSelectContactFromBirthdays} />
-      ) : (
+      ) : typeName === "list" ? (
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
-          {!sidebarCollapsed && (
-            <ListsPanel
-              lists={lists}
-              memberIds={listMemberIds}
-              selectedListId={selectedListId}
-              onSelectList={(listId) => {
-                setSelectedListId(listId);
-                setEditingListId(null);
-              }}
-              refreshing={listsRefreshing}
-              onRefresh={handleRefreshLists}
+          {!sidebarCollapsed && listSchema && (
+            <TypeObjectList
+              schema={listSchema}
+              objects={lists as unknown as (Record<string, unknown> & { id: number })[]}
+              selectedId={selectedListId}
+              onSelect={(id) => navigate(`/types/list/${id}`)}
+              subtitleFor={(obj) => `${listMemberIds[obj.id]?.length ?? 0} member${listMemberIds[obj.id]?.length === 1 ? "" : "s"}`}
+              headerAction={
+                <Tooltip title="Re-run each list's query to refresh its membership">
+                  <span>
+                    <IconButton size="small" aria-label="Refresh lists" onClick={handleRefreshLists} disabled={listsRefreshing}>
+                      {listsRefreshing ? <CircularProgress size={18} /> : <SyncIcon fontSize="small" />}
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              }
             />
           )}
 
           <Box component="main" id="list-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
-            {editingListId !== null ? (
-              <ListForm
+            {!listSchema ? (
+              <Alert severity="error" sx={{ mt: 4 }}>
+                Could not load the list schema.
+              </Alert>
+            ) : editingListId !== null ? (
+              <SchemaForm
                 key={editingListId}
-                list={editingListId === "new" ? null : lists.find((l) => l.id === editingListId) ?? null}
-                memberTypes={memberTypes}
+                schema={listSchema}
+                value={editingListId === "new" ? null : (lists.find((l) => l.id === editingListId) as SavedObject | undefined) ?? null}
+                overlayFields={overlayListFields}
                 onCancel={() => setEditingListId(null)}
-                onSaved={handleListSaved}
+                onSaved={(saved) => handleListSaved(saved as unknown as ListObject)}
               />
             ) : (
               <Box sx={{ pt: 4 }}>
                 {selectedList ? (
-                  <ListDetail
-                    list={selectedList}
-                    memberCount={listMemberIds[selectedList.id]?.length ?? 0}
+                  <SchemaDetail
+                    key={selectedList.id}
+                    schema={listSchema}
+                    data={selectedList as unknown as SchemaObjectData}
                     onEdit={() => setEditingListId(selectedList.id)}
-                    onRefreshed={handleListRefreshed}
+                    extraSections={<ListMembersSection list={selectedList} />}
+                    onListsChanged={refreshListMemberIds}
+                    extraActions={
+                      selectedList.query ? (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => handleRefreshSelectedList(selectedList.id)}
+                          disabled={selectedListRefreshing}
+                        >
+                          {selectedListRefreshing ? "Refreshing…" : "Refresh"}
+                        </Button>
+                      ) : undefined
+                    }
                   />
                 ) : selectedListId !== null ? (
                   <Alert severity="error">List not found.</Alert>
                 ) : (
                   <Typography color="text.secondary">Select a list to see its details.</Typography>
                 )}
+                {selectedListRefreshError && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {selectedListRefreshError}
+                  </Alert>
+                )}
+              </Box>
+            )}
+          </Box>
+        </Box>
+      ) : (
+        <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
+          {!sidebarCollapsed && genericSchema && (
+            <TypeObjectList
+              schema={genericSchema}
+              objects={genericObjects}
+              selectedId={routeId}
+              onSelect={(id) => navigate(`/types/${typeName}/${id}`)}
+            />
+          )}
+
+          <Box component="main" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
+            {!genericSchema ? (
+              <Alert severity="error" sx={{ mt: 4 }}>
+                Unknown object type "{typeName}".
+              </Alert>
+            ) : editingGenericId !== null ? (
+              <SchemaForm
+                key={editingGenericId}
+                schema={genericSchema}
+                value={editingGenericId === "new" ? null : genericObjects.find((o) => o.id === editingGenericId) ?? null}
+                onCancel={() => setEditingGenericId(null)}
+                onSaved={(saved) => {
+                  setGenericObjects((prev) => {
+                    const exists = prev.some((o) => o.id === saved.id);
+                    return exists ? prev.map((o) => (o.id === saved.id ? saved : o)) : [...prev, saved];
+                  });
+                  setEditingGenericId(null);
+                  navigate(`/types/${typeName}/${saved.id}`);
+                }}
+              />
+            ) : (
+              <Box sx={{ pt: 4 }}>
+                {(() => {
+                  const selectedGenericObject = genericObjects.find((o) => o.id === routeId) ?? null;
+                  return selectedGenericObject ? (
+                    <SchemaDetail
+                      key={selectedGenericObject.id}
+                      schema={genericSchema}
+                      data={selectedGenericObject as unknown as SchemaObjectData}
+                      onEdit={() => setEditingGenericId(selectedGenericObject.id)}
+                      onListsChanged={refreshListMemberIds}
+                    />
+                  ) : routeId !== null ? (
+                    <Alert severity="error">Not found.</Alert>
+                  ) : (
+                    <Typography color="text.secondary">
+                      Select a {genericSchema.label.toLowerCase()} to see its details.
+                    </Typography>
+                  );
+                })()}
               </Box>
             )}
           </Box>
@@ -841,5 +1077,6 @@ export function App() {
 
       {showAdminConsole && <AdminConsoleModal onClose={() => setShowAdminConsole(false)} />}
     </Box>
+    </NavigateToObjectContext.Provider>
   );
 }

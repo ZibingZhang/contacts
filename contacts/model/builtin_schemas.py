@@ -10,6 +10,13 @@ from __future__ import annotations
 from contacts.model import schema
 from contacts.model.schema import Field, Schema
 
+# "Name (Year) — Majors (minor: Minors)" -- matches the old formatEducationEntry.
+# `_high_school_fields()` has no majors/minors key at all, so those bracketed
+# segments simply resolve as absent and drop, leaving "Name (Year)".
+_EDUCATION_ENTRY_TEMPLATE = (
+    "{name}[ ({graduation_year})][ — {majors}][ (minor: {minors})]"
+)
+
 
 def _university_fields() -> list[Field]:
     return [
@@ -60,6 +67,7 @@ CONTACT_SCHEMA = Schema(
     name=schema.TYPE_CONTACT,
     label="Contact",
     builtin=True,
+    title_field="name",
     fields=[
         Field(
             "name",
@@ -87,6 +95,8 @@ CONTACT_SCHEMA = Schema(
                 Field("start", "Start", "date", required=True),
                 Field("end", "End", "date", required=True),
             ],
+            display="template",
+            display_options={"template": "[{start}][ – {end}]"},
         ),
         Field(
             "education",
@@ -94,14 +104,55 @@ CONTACT_SCHEMA = Schema(
             "object",
             fields=[
                 Field(
-                    "high_school", "High school", "object", fields=_high_school_fields()
+                    "high_school",
+                    "High school",
+                    "object",
+                    fields=_high_school_fields(),
+                    display="template",
+                    display_options={"template": _EDUCATION_ENTRY_TEMPLATE},
                 ),
-                Field("bachelor", "Bachelor's", "object", fields=_university_fields()),
-                Field("master", "Master's", "object", fields=_university_fields()),
-                Field("law", "Law", "object", fields=_university_fields()),
-                Field("medical", "Medical", "object", fields=_university_fields()),
-                Field("phd", "PhD", "object", fields=_university_fields()),
+                Field(
+                    "bachelor",
+                    "Bachelor's",
+                    "object",
+                    fields=_university_fields(),
+                    display="template",
+                    display_options={"template": _EDUCATION_ENTRY_TEMPLATE},
+                ),
+                Field(
+                    "master",
+                    "Master's",
+                    "object",
+                    fields=_university_fields(),
+                    display="template",
+                    display_options={"template": _EDUCATION_ENTRY_TEMPLATE},
+                ),
+                Field(
+                    "law",
+                    "Law",
+                    "object",
+                    fields=_university_fields(),
+                    display="template",
+                    display_options={"template": _EDUCATION_ENTRY_TEMPLATE},
+                ),
+                Field(
+                    "medical",
+                    "Medical",
+                    "object",
+                    fields=_university_fields(),
+                    display="template",
+                    display_options={"template": _EDUCATION_ENTRY_TEMPLATE},
+                ),
+                Field(
+                    "phd",
+                    "PhD",
+                    "object",
+                    fields=_university_fields(),
+                    display="template",
+                    display_options={"template": _EDUCATION_ENTRY_TEMPLATE},
+                ),
             ],
+            display="rows_by_field",
         ),
         Field(
             "email_addresses",
@@ -113,8 +164,19 @@ CONTACT_SCHEMA = Schema(
                 Field("address", "Address", "text", required=True),
                 Field("label", "Label", "text", required=True),
             ],
+            display="rows_by_item",
+            display_options={
+                "value_display": "link",
+                "value_display_options": {"href_template": "mailto:{address}"},
+            },
         ),
-        Field("favorite", "Favorites", "any"),
+        Field(
+            "favorite",
+            "Favorites",
+            "any",
+            display="flatten_entries",
+            display_options={"label_prefix": "Favorite"},
+        ),
         Field("friends_friend", "Friend's friend", "text"),
         Field("notes", "Notes", "long_text"),
         Field(
@@ -133,6 +195,8 @@ CONTACT_SCHEMA = Schema(
                 ),
                 Field("label", "Label", "text"),
             ],
+            display="rows_by_item",
+            display_options={"value_display": "phone_number"},
         ),
         Field(
             "social_profiles",
@@ -147,6 +211,10 @@ CONTACT_SCHEMA = Schema(
                         Field("user_id", "User id", "text"),
                         Field("username", "Username", "text"),
                     ],
+                    display="link",
+                    display_options={
+                        "href_template": "https://www.facebook.com/{username|user_id}"
+                    },
                 ),
                 Field(
                     "game_center",
@@ -156,6 +224,8 @@ CONTACT_SCHEMA = Schema(
                         Field("link", "Link", "text", required=True),
                         Field("username", "Username", "text", required=True),
                     ],
+                    display="template",
+                    display_options={"template": "{username}"},
                 ),
                 Field(
                     "instagram",
@@ -164,9 +234,20 @@ CONTACT_SCHEMA = Schema(
                     fields=[
                         Field("username", "Username", "text", required=True),
                         Field(
-                            "finsta_usernames", "Finsta usernames", "text", many=True
+                            "finsta_usernames",
+                            "Finsta usernames",
+                            "text",
+                            many=True,
+                            display="link",
+                            display_options={
+                                "href_template": "https://www.instagram.com/{value}"
+                            },
                         ),
                     ],
+                    display="link",
+                    display_options={
+                        "href_template": "https://www.instagram.com/{username}"
+                    },
                 ),
                 Field(
                     "linkedin",
@@ -175,8 +256,13 @@ CONTACT_SCHEMA = Schema(
                     fields=[
                         Field("username", "Username", "text", required=True),
                     ],
+                    display="link",
+                    display_options={
+                        "href_template": "https://www.linkedin.com/in/{username}"
+                    },
                 ),
             ],
+            display="rows_by_field",
         ),
         Field(
             "street_addresses",
@@ -191,8 +277,20 @@ CONTACT_SCHEMA = Schema(
                 Field("state", "State", "text"),
                 Field("street", "Street", "text", many=True),
             ],
+            display="rows_by_item",
+            display_options={
+                "value_display": "lines",
+                "value_display_options": {
+                    "lines": [
+                        {"fields": ["street"]},
+                        {"fields": ["city", "state", "postal_code"], "separator": ", "},
+                        {"fields": ["country"]},
+                    ],
+                    "join_with": " · ",
+                },
+            },
         ),
-        Field("tags", "Tags", "text", many=True, unique=True),
+        Field("tags", "Tags", "text", many=True, unique=True, display="chips"),
         Field("icloud", "iCloud", "object", managed=True, fields=_icloud_fields()),
     ],
 )
@@ -202,6 +300,7 @@ LIST_SCHEMA = Schema(
     name=schema.TYPE_LIST,
     label="List",
     builtin=True,
+    title_field="name",
     fields=[
         Field("name", "Name", "text", required=True),
         # Optional: a list with no query is maintained by hand. With one, the

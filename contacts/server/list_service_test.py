@@ -251,6 +251,59 @@ def test_membership_of_one_type_ignores_same_ids_of_another(contacts) -> None:
     assert list_service.members(a_list["id"])[0]["name"] == "Acme"
 
 
+def test_a_list_of_lists_does_not_also_show_the_container_as_a_member_of_itself() -> None:
+    container = object_service.create_object(
+        model.TYPE_LIST, {"name": "Container", "member_type": model.TYPE_LIST}
+    )
+    member = object_service.create_object(
+        model.TYPE_LIST, {"name": "Member", "member_type": model.TYPE_CONTACT}
+    )
+
+    list_service.add_members(container["id"], [member["id"]])
+
+    assert list_service.member_ids(container["id"]) == [member["id"]]
+    assert list_service.member_ids(member["id"]) == []
+
+
+def test_all_member_ids_distinguishes_a_list_of_lists_from_its_member() -> None:
+    container = object_service.create_object(
+        model.TYPE_LIST, {"name": "Container", "member_type": model.TYPE_LIST}
+    )
+    member = object_service.create_object(
+        model.TYPE_LIST, {"name": "Member", "member_type": model.TYPE_CONTACT}
+    )
+
+    list_service.add_members(container["id"], [member["id"]])
+
+    all_ids = list_service.all_member_ids()
+    assert all_ids[container["id"]] == [member["id"]]
+    assert all_ids[member["id"]] == []
+
+
+def test_refreshing_a_list_of_lists_does_not_detach_it_from_its_own_container() -> None:
+    container = object_service.create_object(
+        model.TYPE_LIST, {"name": "Container", "member_type": model.TYPE_LIST}
+    )
+    leaf = object_service.create_object(model.TYPE_LIST, {"name": "Leaf"})
+    middle = object_service.create_object(
+        model.TYPE_LIST,
+        {
+            "name": "Middle",
+            "member_type": model.TYPE_LIST,
+            "query": "SELECT id FROM list WHERE json_extract(data, '$.name') = 'Leaf'",
+        },
+    )
+    list_service.add_members(container["id"], [middle["id"]])
+
+    # Refreshing `middle`'s query must only reconcile *its own* membership
+    # (picking up `leaf`), not the unrelated association that makes `middle`
+    # itself a member of `container`.
+    list_service.refresh_list(middle["id"])
+
+    assert list_service.member_ids(container["id"]) == [middle["id"]]
+    assert list_service.member_ids(middle["id"]) == [leaf["id"]]
+
+
 def test_all_member_ids_covers_every_list(contacts) -> None:
     first = make_list(query=CTY_QUERY)
     second = object_service.create_object(

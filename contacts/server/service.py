@@ -1,8 +1,8 @@
 """App-level logic backing the HTTP API.
 
 Generic object CRUD lives in `object_service`; what's left here is the
-contact-flavoured aggregates the UI needs (tags, field options) and the
-multi-step iCloud sync/push state machines.
+contact-flavoured aggregates the UI needs (tags) and the multi-step iCloud
+sync/push state machines.
 """
 
 from __future__ import annotations
@@ -53,32 +53,6 @@ def list_contacts() -> list[Object]:
 def invalidate_contacts_cache() -> None:
     """Clear cached objects so the next read goes back to disk."""
     object_service.invalidate_cache()
-
-
-def list_contact_field_options() -> dict:
-    """Lists the fixed option sets used by constrained contact fields.
-
-    Returns:
-        {"countries": list[str], "country_codes": [{"code": int, "label":
-        str}], "high_schools": list[str], "universities": list[str]}.
-    """
-    contacts = list_contacts()
-    return {
-        "countries": model.Country.values(),
-        "country_codes": [
-            {
-                "code": int(code),
-                "label": (
-                    "United States/Canada"
-                    if code is model.CountryCode.NANP
-                    else code.name.replace("_", " ").title()
-                ),
-            }
-            for code in model.CountryCode
-        ],
-        "high_schools": contact_utils.extract_high_schools(contacts),
-        "universities": contact_utils.extract_universities(contacts),
-    }
 
 
 def list_tags() -> list[dict]:

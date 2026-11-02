@@ -18,8 +18,6 @@ _UNSYNCED_PATHS = (
     "social_profiles.instagram.finsta_usernames",
 )
 
-_EDUCATION_UNIVERSITY_LEVELS = ("bachelor", "master", "law", "medical", "phd")
-
 
 def add_email_address_if_not_exists(
     contact: Object, email_address: str, label: str
@@ -228,40 +226,3 @@ def extract_tags(contacts: Sequence[Object]) -> list[str]:
         A list of all the tags the contacts have.
     """
     return sorted({tag for contact in contacts for tag in (contact.get("tags") or [])})
-
-
-def extract_high_schools(contacts: Sequence[Object]) -> list[str]:
-    """Extract all high school names from the contacts' education.
-
-    Args:
-        contacts: The contacts.
-
-    Returns:
-        A list of all the distinct high school names the contacts have.
-    """
-    return sorted(
-        {
-            name
-            for contact in contacts
-            if (name := object_utils.get_path(contact, "education.high_school.name"))
-        }
-    )
-
-
-def extract_universities(contacts: Sequence[Object]) -> list[str]:
-    """Extract all university names from the contacts' education.
-
-    Args:
-        contacts: The contacts.
-
-    Returns:
-        A list of all the distinct university names the contacts have.
-    """
-    return sorted(
-        {
-            name
-            for contact in contacts
-            for level in _EDUCATION_UNIVERSITY_LEVELS
-            if (name := object_utils.get_path(contact, f"education.{level}.name"))
-        }
-    )

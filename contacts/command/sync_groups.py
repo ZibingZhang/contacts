@@ -34,7 +34,7 @@ def run() -> None:
     pushed_lists: list[Object] = []
 
     for a_list in lists:
-        member_ids_before = association_service.related_ids(
+        member_ids_before = association_service.member_ids_of(
             model.TYPE_LIST, a_list["id"], a_list.get("member_type", model.TYPE_CONTACT)
         )
 

@@ -51,6 +51,33 @@ OPTION_SOURCES: dict[str, Callable[[], list]] = {
     "country_code": enumeration.CountryCode.values,
 }
 
+# Labeled counterparts of OPTION_SOURCES, for clients that want a display
+# label alongside each allowed value (e.g. a country name for a country
+# code) rather than just the bare value.
+OPTION_LABELS: dict[str, Callable[[], list[dict]]] = {
+    "country": enumeration.Country.labeled_values,
+    "country_code": enumeration.CountryCode.labeled_values,
+}
+
+# Named presentation hints a field's `display` may select -- purely a
+# frontend concern (a small, reusable renderer per kind), never consulted
+# while validating or storing an object. `display_options` carries each
+# kind's own parameters and isn't validated beyond "is a dict", the same
+# way `default`'s shape isn't validated against the field's own type.
+DISPLAY_KINDS = frozenset(
+    {
+        "chips",
+        "template",
+        "join_fields",
+        "lines",
+        "link",
+        "phone_number",
+        "rows_by_item",
+        "rows_by_field",
+        "flatten_entries",
+    }
+)
+
 
 class SchemaError(Exception):
     """Raised when a schema itself is malformed."""
@@ -75,10 +102,12 @@ _FIELD_ATTRIBUTES = frozenset(
         "ref_type",
         "unique",
         "order_by",
+        "display",
+        "display_options",
     }
 )
 
-_SCHEMA_ATTRIBUTES = frozenset({"name", "label", "fields", "builtin"})
+_SCHEMA_ATTRIBUTES = frozenset({"name", "label", "fields", "builtin", "title_field"})
 
 
 @dataclasses.dataclass
@@ -103,6 +132,11 @@ class Field:
             field, e.g. a contact's tags.
         order_by: The nested key to sort an object `many` field's items by,
             e.g. a contact's email addresses by address.
+        display: A named presentation hint for a client to render this
+            field's value with (e.g. "chips", "link"), one of
+            `DISPLAY_KINDS`. Purely cosmetic -- never consulted here.
+        display_options: Parameters for `display`, shaped per kind (e.g. a
+            `link`'s `href_template`). Opaque to this module.
     """
 
     key: str
@@ -118,6 +152,8 @@ class Field:
     ref_type: str | None = None
     unique: bool = False
     order_by: str | None = None
+    display: str | None = None
+    display_options: dict | None = None
 
     def to_dict(self) -> dict:
         """Serialize the field, omitting anything left at its default.
@@ -151,6 +187,10 @@ class Field:
             data["unique"] = True
         if self.order_by is not None:
             data["order_by"] = self.order_by
+        if self.display is not None:
+            data["display"] = self.display
+        if self.display_options is not None:
+            data["display_options"] = dict(self.display_options)
 
         return data
 
@@ -166,6 +206,22 @@ class Field:
             return OPTION_SOURCES[self.options_from]()
         return []
 
+    def option_pairs(self) -> list[dict]:
+        """Resolve the field's allowed values as labeled pairs, for display.
+
+        Returns:
+            `{"value": ..., "label": str}` for each allowed value of a
+            "select" field, empty otherwise. An explicit `options` list has
+            no label information beyond the value itself; `options_from`
+            sources may supply a friendlier label (e.g. a country name for
+            a country code).
+        """
+        if self.options is not None:
+            return [{"value": option, "label": str(option)} for option in self.options]
+        if self.options_from is not None:
+            return OPTION_LABELS[self.options_from]()
+        return []
+
 
 @dataclasses.dataclass
 class Schema:
@@ -177,12 +233,16 @@ class Schema:
         fields: The fields objects of this type may carry.
         builtin: Whether the app owns this schema, in which case its fields
             are not editable.
+        title_field: The key of the top-level field a client should use as
+            an object's display title, e.g. "name". Optional -- a client is
+            expected to fall back to some heuristic of its own when absent.
     """
 
     name: str
     label: str
     fields: list[Field]
     builtin: bool = False
+    title_field: str | None = None
 
     def to_dict(self) -> Object:
         """Serialize the schema.
@@ -197,6 +257,8 @@ class Schema:
         }
         if self.builtin:
             data["builtin"] = True
+        if self.title_field is not None:
+            data["title_field"] = self.title_field
         return data
 
     def field(self, key: str) -> Field | None:
@@ -291,6 +353,19 @@ def _parse_field(data: Any, path: str) -> Field:
                 f"{field_path}: order_by {order_by!r} is not one of its fields"
             )
 
+    display = data.get("display")
+    if display is not None and display not in DISPLAY_KINDS:
+        raise SchemaError(
+            f"{field_path}: unknown display {display!r}; "
+            f"expected one of {', '.join(sorted(DISPLAY_KINDS))}"
+        )
+
+    display_options = data.get("display_options")
+    if display_options is not None and not isinstance(display_options, dict):
+        raise SchemaError(f"{field_path}: display_options must be an object")
+    if display_options is not None and display is None:
+        raise SchemaError(f"{field_path}: display_options requires display")
+
     return Field(
         key=key,
         label=label,
@@ -305,6 +380,8 @@ def _parse_field(data: Any, path: str) -> Field:
         ref_type=ref_type,
         unique=bool(data.get("unique", False)),
         order_by=order_by,
+        display=display,
+        display_options=display_options,
     )
 
 
@@ -369,11 +446,23 @@ def validate_schema(data: Any) -> Schema:
     if not isinstance(raw_fields, list) or not raw_fields:
         raise SchemaError(f"{name}: fields must be a non-empty list")
 
+    fields = _parse_fields(raw_fields, "")
+
+    title_field = data.get("title_field")
+    if title_field is not None:
+        if not isinstance(title_field, str):
+            raise SchemaError(f"{name}: title_field must be a string")
+        if title_field not in {field.key for field in fields}:
+            raise SchemaError(
+                f"{name}: title_field {title_field!r} is not one of its fields"
+            )
+
     return Schema(
         name=name,
         label=label,
-        fields=_parse_fields(raw_fields, ""),
+        fields=fields,
         builtin=builtin,
+        title_field=title_field,
     )
 
 

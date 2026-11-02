@@ -11,7 +11,7 @@ import time
 
 from contacts.dao import disk_dao
 from contacts.model import builtin_schemas, schema
-from contacts.model.schema import Schema
+from contacts.model.schema import Field, Schema
 from contacts.server import errors
 from contacts.utils import object_utils
 from contacts.utils.object_utils import Object
@@ -38,9 +38,13 @@ def list_schemas() -> list[Object]:
     """List every schema.
 
     Returns:
-        The schema objects, ordered by name.
+        The schema objects, ordered by name, each with resolved option
+        labels on its "select" fields.
     """
-    return sorted(_schemas_by_name().values(), key=lambda obj: obj["name"])
+    return [
+        _with_resolved_options(obj)
+        for obj in sorted(_schemas_by_name().values(), key=lambda obj: obj["name"])
+    ]
 
 
 def find_schema(name: str) -> Schema | None:
@@ -84,7 +88,8 @@ def get_schema_object(name: str) -> Object:
         name: The type name, e.g. "contact".
 
     Returns:
-        The schema object, including its id and timestamps.
+        The schema object, including its id and timestamps, with resolved
+        option labels on its "select" fields.
 
     Raises:
         errors.NotFoundError: If no such type exists.
@@ -92,7 +97,7 @@ def get_schema_object(name: str) -> Object:
     stored = _schemas_by_name().get(name)
     if stored is None:
         raise errors.NotFoundError(f"Unknown object type {name!r}")
-    return stored
+    return _with_resolved_options(stored)
 
 
 def type_names() -> set[str]:
@@ -109,6 +114,30 @@ def _without_columns(stored: Object) -> Object:
         key: value
         for key, value in stored.items()
         if key not in ("id", "ctime", "mtime")
+    }
+
+
+def _field_with_resolved_options(field: Field) -> Object:
+    data = field.to_dict()
+    if field.type == "select":
+        data["resolved_options"] = field.option_pairs()
+    if field.fields is not None:
+        data["fields"] = [
+            _field_with_resolved_options(nested) for nested in field.fields
+        ]
+    return data
+
+
+def _with_resolved_options(stored: Object) -> Object:
+    """Adds a `resolved_options` labeled-pairs list to every "select" field.
+
+    Computed at serve time rather than stored, so it can't go stale if an
+    `options_from` source (e.g. a country code) ever changes.
+    """
+    parsed = schema.validate_schema(_without_columns(stored))
+    return {
+        **stored,
+        "fields": [_field_with_resolved_options(field) for field in parsed.fields],
     }
 
 
@@ -147,7 +176,7 @@ def create_schema(data: Object) -> Object:
     # Give the new type its own view, so its objects read like their own table.
     disk_dao.sync_views()
 
-    return created
+    return _with_resolved_options(created)
 
 
 def update_schema(name: str, data: Object) -> Object:
@@ -191,7 +220,7 @@ def update_schema(name: str, data: Object) -> Object:
     disk_dao.update_objects(schema.TYPE_SCHEMA, [updated])
     invalidate_cache()
 
-    return updated
+    return _with_resolved_options(updated)
 
 
 def delete_schema(name: str) -> None:
