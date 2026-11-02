@@ -69,8 +69,11 @@ def member_ids(list_id: int) -> list[int]:
 def all_member_ids() -> dict[int, list[int]]:
     """List every list's membership in one pass.
 
-    The nav needs a count for every list at once, so this reads the
-    associations once and groups them rather than querying per list.
+    The nav needs a count for every list at once. Reads straight from
+    `disk_dao` instead of going through `object_service.list_objects` for
+    associations -- that would materialize every association as a full
+    object just to look at three fields, and the association table is the
+    largest in the app (one row per list member).
 
     Returns:
         A mapping of list id to its member ids.
@@ -81,15 +84,15 @@ def all_member_ids() -> dict[int, list[int]]:
     }
     members_by_list: dict[int, list[int]] = {list_id: [] for list_id in lists}
 
-    for association in object_service.list_objects(schema.TYPE_ASSOCIATION):
-        # Only side 1 is ever the container (see `_reconcile`) -- checking
-        # both sides here would also count a list as its own member whenever
-        # it's instead a *member* of another list of the same member_type.
-        container_type, container_id = association_service.side(association, 1)
-        if container_type != schema.TYPE_LIST or container_id not in lists:
+    # Only side 1 is ever the container (see `_reconcile`), and the query
+    # already filters to side-1-is-a-list -- checking side 2 as well would
+    # also count a list as its own member whenever it's instead a *member*
+    # of another list of the same member_type.
+    for container_id, member_type, member_id in disk_dao.read_association_sides_2(
+        schema.TYPE_LIST
+    ):
+        if container_id not in lists:
             continue
-
-        member_type, member_id = association_service.side(association, 2)
         if member_type == lists[container_id]:
             members_by_list[container_id].append(member_id)
 

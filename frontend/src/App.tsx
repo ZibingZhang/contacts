@@ -225,6 +225,7 @@ export function App() {
   const isGenericType = !isBirthdays && !isSchemasView && typeName !== "contact" && typeName !== "list";
   const [genericSchema, setGenericSchema] = useState<SchemaObject | null>(null);
   const [genericObjects, setGenericObjects] = useState<SavedObject[]>([]);
+  const [genericLoading, setGenericLoading] = useState(false);
   const [editingGenericId, setEditingGenericId] = useState<number | "new" | null>(null);
 
   // Hand-built Schemas page -- there's no schema-object named "schema" (see
@@ -272,9 +273,18 @@ export function App() {
     if (!isGenericType) {
       setGenericSchema(null);
       setGenericObjects([]);
+      setGenericLoading(false);
       return;
     }
     let cancelled = false;
+    // Clear the previous type's schema/objects (rather than leaving them up
+    // while the new type loads) so a direct generic-to-generic navigation
+    // (e.g. company -> association) can't render under the wrong type's
+    // schema, and gate the "unknown type" message on `genericLoading` below
+    // so a load in flight isn't mistaken for a type that doesn't exist.
+    setGenericSchema(null);
+    setGenericObjects([]);
+    setGenericLoading(true);
     Promise.all([fetchSchema(typeName), fetchObjects<SavedObject>(typeName)])
       .then(([schemaData, objectsData]) => {
         if (cancelled) return;
@@ -285,6 +295,9 @@ export function App() {
         if (cancelled) return;
         setGenericSchema(null);
         setGenericObjects([]);
+      })
+      .finally(() => {
+        if (!cancelled) setGenericLoading(false);
       });
     return () => {
       cancelled = true;
@@ -1067,9 +1080,15 @@ export function App() {
 
           <Box component="main" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
             {!genericSchema ? (
-              <Alert severity="error" sx={{ mt: 4 }}>
-                Unknown object type "{typeName}".
-              </Alert>
+              genericLoading ? (
+                <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <Alert severity="error" sx={{ mt: 4 }}>
+                  Unknown object type "{typeName}".
+                </Alert>
+              )
             ) : editingGenericId !== null ? (
               <SchemaForm
                 key={editingGenericId}

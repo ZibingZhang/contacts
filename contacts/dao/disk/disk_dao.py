@@ -366,6 +366,39 @@ class DiskDao:
         return [DiskDao._row_to_object(row) for row in rows]
 
     @staticmethod
+    def read_association_sides_2(object_type_1: str) -> list[tuple[int, str, int]]:
+        """Read side 2 of every association whose side 1 is the given type.
+
+        Projects out just the three scalar fields needed for membership
+        grouping (e.g. in `list_service.all_member_ids`) instead of
+        materializing full association objects -- the association table is
+        the largest in the app (one row per list member), so parsing every
+        row's full JSON blob there is the expensive part.
+
+        Args:
+            object_type_1: The type expected on side 1 (e.g. "list").
+
+        Returns:
+            Tuples of (object_id_1, object_type_2, object_id_2), ordered by id.
+        """
+        with contextlib.closing(DiskDao._connect()) as connection, connection:
+            rows = connection.execute(
+                f"""
+                SELECT
+                    json_extract(data, '$.object_id_1'),
+                    json_extract(data, '$.object_type_2'),
+                    json_extract(data, '$.object_id_2')
+                FROM object INDEXED BY idx_association_side_1
+                WHERE type = '{schema.TYPE_ASSOCIATION}'
+                  AND json_extract(data, '$.object_type_1') = ?
+                ORDER BY id
+                """,
+                (object_type_1,),
+            ).fetchall()
+
+        return [(row[0], row[1], row[2]) for row in rows]
+
+    @staticmethod
     def run_readonly_query(sql: str) -> list[tuple]:
         """Runs a read-only SQL statement against data.db, e.g. to resolve a
         list's `query` into the object ids it currently matches.
