@@ -1,10 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import type { SchemaField, SchemaObject } from "../types";
 import { displayLabel } from "./displayLabel";
 import { fieldRowsFor } from "./fieldRows";
 import { MULTI_ROW_DISPLAY_KINDS } from "./displayRegistry";
-import { ObjectListsSection } from "./ObjectListsSection";
 import { DetailSection, fieldRow, type FieldRowData } from "../components/DetailSection";
 import { isTypingTarget } from "../hooks";
 import Box from "@mui/material/Box";
@@ -48,16 +47,12 @@ interface SchemaDetailProps {
   renderHeader?: (data: SchemaObjectData, defaultTitle: string) => ReactNode;
   extraActions?: ReactNode;
   extraSections?: ReactNode;
-  // Notified after the Lists section changes this object's membership --
-  // lets a caller refresh state it owns (e.g. nav sidebar member counts).
-  onListsChanged?: () => void;
 }
 
 /**
  * Renders any object's detail view off its schema alone: a title, one
  * DetailSection per `many`/`object` field, a "Details" section grouping the
- * remaining scalars, a "Lists" section (every type gets one), a "System"
- * section for managed fields, and timestamps.
+ * remaining scalars, a "System" section for managed fields, and timestamps.
  */
 export function SchemaDetail({
   schema,
@@ -66,7 +61,6 @@ export function SchemaDetail({
   renderHeader,
   extraActions,
   extraSections,
-  onListsChanged,
 }: SchemaDetailProps) {
   const title = displayLabel(schema, data, data.id);
 
@@ -82,9 +76,17 @@ export function SchemaDetail({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onEdit]);
 
-  const groupedFields = schema.fields.filter((field) => !field.managed && isGroupedField(field));
-  const managedFields = schema.fields.filter((field) => field.managed);
-  const scalarFields = schema.fields.filter((field) => !field.managed && !isGroupedField(field));
+  const groupedFields = useMemo(
+    () => schema.fields.filter((field) => !field.managed && isGroupedField(field)),
+    [schema]
+  );
+  const managedFields = useMemo(() => schema.fields.filter((field) => field.managed), [schema]);
+  const scalarFields = useMemo(
+    () => schema.fields.filter((field) => !field.managed && !isGroupedField(field)),
+    [schema]
+  );
+  const scalarRows = useMemo(() => rowsFor(scalarFields, data), [scalarFields, data]);
+  const managedRows = useMemo(() => rowsFor(managedFields, data), [managedFields, data]);
 
   return (
     <Box>
@@ -102,13 +104,11 @@ export function SchemaDetail({
         <DetailSection key={field.key} title={field.label} rows={fieldRowsFor(field, data)} />
       ))}
 
-      <DetailSection title="Details" rows={rowsFor(scalarFields, data)} />
+      <DetailSection title="Details" rows={scalarRows} />
 
       {extraSections}
 
-      <ObjectListsSection objectType={schema.name} objectId={data.id} onChanged={onListsChanged} />
-
-      <DetailSection title="System" rows={rowsFor(managedFields, data)} />
+      <DetailSection title="System" rows={managedRows} />
 
       <DetailSection
         title="Timestamps"

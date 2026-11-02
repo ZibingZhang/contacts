@@ -333,21 +333,29 @@ class DiskDao:
             The matching associations, ordered by id.
         """
         with contextlib.closing(DiskDao._connect()) as connection, connection:
+            # A plain OR across the two sides can't use either partial index
+            # (SQLite won't pick an index for an OR of two different
+            # expressions), so it falls back to a full scan. Splitting into a
+            # UNION of two indexable SELECTs -- each pinned via INDEXED BY,
+            # since this DB is never ANALYZE'd and the planner otherwise
+            # defaults to the (type, id) primary key -- lets each side use
+            # its matching idx_association_side_N index. UNION (not UNION
+            # ALL) drops the duplicate that a self-association would
+            # otherwise produce.
             rows = connection.execute(
-                """
-                SELECT id, ctime, mtime, data FROM object
-                WHERE type = ?
-                  AND (
-                    (json_extract(data, '$.object_type_1') = ?
-                     AND json_extract(data, '$.object_id_1') = ?)
-                    OR
-                    (json_extract(data, '$.object_type_2') = ?
-                     AND json_extract(data, '$.object_id_2') = ?)
-                  )
+                f"""
+                SELECT id, ctime, mtime, data FROM object INDEXED BY idx_association_side_1
+                WHERE type = '{schema.TYPE_ASSOCIATION}'
+                  AND json_extract(data, '$.object_type_1') = ?
+                  AND json_extract(data, '$.object_id_1') = ?
+                UNION
+                SELECT id, ctime, mtime, data FROM object INDEXED BY idx_association_side_2
+                WHERE type = '{schema.TYPE_ASSOCIATION}'
+                  AND json_extract(data, '$.object_type_2') = ?
+                  AND json_extract(data, '$.object_id_2') = ?
                 ORDER BY id
                 """,
                 (
-                    schema.TYPE_ASSOCIATION,
                     object_type,
                     object_id,
                     object_type,

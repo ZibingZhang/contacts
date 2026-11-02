@@ -708,17 +708,6 @@ export function App() {
     navigate(`/types/list/${list.id}`);
   }
 
-  // Re-reads every list's membership -- used after the generic Lists
-  // section changes membership from the non-list side, which the
-  // list-specific handlers above don't otherwise observe.
-  function refreshListMemberIds() {
-    fetchAllListMemberIds()
-      .then((data) => setListMemberIds(parseMemberIds(data.member_ids)))
-      .catch(() => {
-        // Counts will catch up on the next load.
-      });
-  }
-
   function handleListRefreshed(list: ListObject) {
     setLists((prev) => prev.map((l) => (l.id === list.id ? list : l)));
     fetchAllListMemberIds()
@@ -902,7 +891,6 @@ export function App() {
                     schema={contactSchema}
                     data={selectedContact as unknown as SchemaObjectData}
                     onEdit={() => setEditingContactId(selectedContact.id)}
-                    onListsChanged={refreshListMemberIds}
                     renderHeader={() => renderContactHeader(selectedContact)}
                     extraActions={
                       <Button variant="outlined" size="small" onClick={() => handleCopyContact(selectedContact)}>
@@ -963,7 +951,6 @@ export function App() {
                     data={selectedList as unknown as SchemaObjectData}
                     onEdit={() => setEditingListId(selectedList.id)}
                     extraSections={<ListMembersSection list={selectedList} />}
-                    onListsChanged={refreshListMemberIds}
                     extraActions={
                       selectedList.query ? (
                         <Button
@@ -1032,7 +1019,6 @@ export function App() {
                       schema={genericSchema}
                       data={selectedGenericObject as unknown as SchemaObjectData}
                       onEdit={() => setEditingGenericId(selectedGenericObject.id)}
-                      onListsChanged={refreshListMemberIds}
                     />
                   ) : routeId !== null ? (
                     <Alert severity="error">Not found.</Alert>
