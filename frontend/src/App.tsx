@@ -781,23 +781,29 @@ export function App() {
     }
   }
 
+  // react-router's `navigate` (from plain `<BrowserRouter>`, not a data
+  // router) gets a new identity on every route change -- it's internally
+  // named `useNavigateUnstable` -- which would otherwise force
+  // `handleSelectContact` to a new identity on every click too, defeating
+  // `ContactRow`'s memoization for every one of the ~1000 rows just to
+  // select one. Refs hold the latest values so the callback itself can stay
+  // referentially stable across renders.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const locationSearchRef = useRef(location.search);
+  locationSearchRef.current = location.search;
+
   // Stable identity so it doesn't defeat ContactList's memoization on every
   // keystroke in the search box. Preserves the current search/filter/list
   // scoping query params -- only the selected contact itself changes.
-  const handleSelectContact = useCallback(
-    (id: number) => {
-      navigate({ pathname: `/types/contact/${id}`, search: location.search });
-    },
-    [navigate, location.search]
-  );
+  const handleSelectContact = useCallback((id: number) => {
+    navigateRef.current({ pathname: `/types/contact/${id}`, search: locationSearchRef.current });
+  }, []);
 
   // Jumps from the birthdays calendar straight to a contact's detail view.
-  const handleSelectContactFromBirthdays = useCallback(
-    (id: number) => {
-      navigate(`/types/contact/${id}`);
-    },
-    [navigate]
-  );
+  const handleSelectContactFromBirthdays = useCallback((id: number) => {
+    navigateRef.current(`/types/contact/${id}`);
+  }, []);
 
   // How the generic renderer (reference fields, the Lists section, list
   // member rows) navigates to another object -- generic by construction,
