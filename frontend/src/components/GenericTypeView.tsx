@@ -1,9 +1,10 @@
+import type { ReactNode } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import type { NavigateFunction } from "react-router-dom";
-import type { ListObject, SchemaObject } from "../types";
+import type { ListObject, SchemaField, SchemaObject } from "../types";
 import { ListsNav } from "./ListsNav";
 import { TypeObjectList } from "./TypeObjectList";
 import { SchemaDetail, type SchemaObjectData } from "../schema-form/SchemaDetail";
@@ -32,7 +33,15 @@ interface GenericTypeViewProps {
 
   editingGenericId: number | "new" | null;
   setEditingGenericId: (id: number | "new" | null) => void;
-  saveGenericObject: (saved: SavedObject) => void;
+  saveGenericObject: (saved: SavedObject) => void | Promise<void>;
+
+  // Composition-root overlays for the one caller (List) that still needs
+  // per-type customization of this otherwise fully generic view -- undefined
+  // for every true generic type.
+  subtitleFor?: (obj: SavedObject) => string;
+  overlayFields?: (fields: SchemaField[], isEditing: boolean) => SchemaField[];
+  extraSections?: (obj: SavedObject) => ReactNode;
+  extraActions?: (obj: SavedObject) => ReactNode;
 }
 
 export function GenericTypeView({
@@ -57,6 +66,10 @@ export function GenericTypeView({
   editingGenericId,
   setEditingGenericId,
   saveGenericObject,
+  subtitleFor,
+  overlayFields,
+  extraSections,
+  extraActions,
 }: GenericTypeViewProps) {
   return (
     <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
@@ -84,6 +97,7 @@ export function GenericTypeView({
             onSelect={(id) => navigate(`/types/${typeName}/${id}`)}
             onSelectAll={() => navigate(`/types/${typeName}`)}
             hideAllRow
+            subtitleFor={subtitleFor}
             selectionMode={selectionMode}
             selectedIds={selectedIds}
             onToggleSelect={onToggleSelect}
@@ -123,9 +137,10 @@ export function GenericTypeView({
             key={editingGenericId}
             schema={genericSchema}
             value={editingGenericId === "new" ? null : genericObjects.find((o) => o.id === editingGenericId) ?? null}
+            overlayFields={overlayFields}
             onCancel={() => setEditingGenericId(null)}
-            onSaved={(saved) => {
-              saveGenericObject(saved);
+            onSaved={async (saved) => {
+              await saveGenericObject(saved);
               setEditingGenericId(null);
               navigate(`/types/${typeName}/${saved.id}`);
             }}
@@ -140,6 +155,8 @@ export function GenericTypeView({
                   schema={genericSchema}
                   data={selectedGenericObject as unknown as SchemaObjectData}
                   onEdit={() => setEditingGenericId(selectedGenericObject.id)}
+                  extraSections={extraSections?.(selectedGenericObject)}
+                  extraActions={extraActions?.(selectedGenericObject)}
                 />
               ) : routeId !== null ? (
                 <Alert severity="error">Not found.</Alert>

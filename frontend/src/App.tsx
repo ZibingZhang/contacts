@@ -2,16 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { fetchTags, updateObjects, ApiError, refreshList } from "./api";
 import type { Contact, ListObject, SchemaField } from "./types";
-import { contactLetter } from "./search";
 import { sameFilter, type SelectedFilter } from "./filters";
 import { useDebouncedValue, useFilteredContactIds } from "./hooks";
 import { useAppData } from "./useAppData";
 import { useGenericTypeBrowser } from "./useGenericTypeBrowser";
 import { useSchemaObjects } from "./useSchemaObjects";
 import { useSyncFlow } from "./useSyncFlow";
-import { useContactKeyboardNav } from "./useContactKeyboardNav";
 import { ContactView } from "./components/ContactView";
-import { ListView } from "./components/ListView";
 import { SchemaView } from "./components/SchemaView";
 import { GenericTypeView } from "./components/GenericTypeView";
 import { TopBar } from "./components/TopBar";
@@ -20,8 +17,12 @@ import { BatchTagModal } from "./components/BatchTagModal";
 import { SyncVerificationModal } from "./components/SyncVerificationModal";
 import { SyncReviewModal } from "./components/SyncReviewModal";
 import { AdminConsoleModal } from "./components/AdminConsoleModal";
+import { ListMembersSection } from "./schema-form/ListMembersSection";
+import type { SavedObject } from "./schema-form/SchemaForm";
 import { NavigateToObjectContext } from "./schema-form/navigation";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Alert from "@mui/material/Alert";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "contacts.sidebar.collapsed";
 
@@ -60,10 +61,11 @@ export function App() {
   const isBirthdays = location.pathname === "/birthdays";
   const { typeName, id: routeId } = parseAppPath(location.pathname);
   const selectedContactId = typeName === "contact" ? routeId : null;
-  const selectedListId = typeName === "list" ? routeId : null;
-  // Which list scopes the contacts sidebar -- independent of `selectedListId`
-  // (the Lists type-browser's own selection), since scoping is a filter on
-  // the *contacts* route, not a navigation to the list's own detail page.
+  // Which list scopes the current type's sidebar -- independent of `routeId`
+  // when browsing lists themselves (that's the Lists type-browser's own
+  // selection, resolved generically inside GenericTypeView), since scoping
+  // is a filter on the *current* route, not a navigation to a list's own
+  // detail page.
   const scopingListIdRaw = searchParams.get("list");
   const scopingListId = scopingListIdRaw && /^\d+$/.test(scopingListIdRaw) ? Number(scopingListIdRaw) : null;
   const searchQuery = searchParams.get("q") ?? "";
@@ -99,7 +101,12 @@ export function App() {
   const { contacts, setContacts, tags, setTags, lists, setLists, listMemberIds, memberTypes, listSchema, contactSchema } = appData;
 
   // Browsing state for any type that isn't "contact", "list", or "schema" --
-  // the generic type browser.
+  // the generic type browser. Note this stays a *data-fetching/TopBar-button*
+  // concept, not a *view-routing* one: List's detail page now renders through
+  // GenericTypeView too (see the render ternary below), but its data still
+  // comes from useAppData's eager lists/listMemberIds, not this hook -- so
+  // `isGenericType` must keep excluding "list" even though GenericTypeView
+  // itself no longer does.
   const isGenericType = !isBirthdays && typeName !== "contact" && typeName !== "list" && typeName !== "schema";
   const genericBrowser = useGenericTypeBrowser(typeName, isGenericType);
   const schemaObjectsBrowser = useSchemaObjects(typeName);
@@ -161,10 +168,7 @@ export function App() {
   // The list that scopes the current type's second-tier sidebar -- the
   // current "view" that search/filters/the alpha index all then narrow
   // further. A missing/deleted list falls back to "all objects of this
-  // type" rather than showing an empty list. Distinct from `selectedListId`
-  // (the Lists type-browser's own selection) -- see where `scopingListId` is
-  // derived above.
-  const selectedList = lists.find((list) => list.id === selectedListId) ?? null;
+  // type" rather than showing an empty list.
   const scopingList = lists.find((list) => list.id === scopingListId) ?? null;
   const scopedContacts = useMemo(() => {
     if (scopingList === null) {
@@ -218,7 +222,6 @@ export function App() {
   // otherwise a list still in relevance order from the previous query could
   // briefly render as "grouped", scattering stray one-contact letter headers.
   const grouped = !appliedSearchQuery.trim();
-  const lettersPresent = useMemo(() => new Set(visibleContacts.map(contactLetter)), [visibleContacts]);
 
   const selectedContact = contacts.find((contact) => contact.id === selectedContactId) ?? null;
 
@@ -245,15 +248,6 @@ export function App() {
     setCopySourceContact(contact);
     setEditingContactId("new");
   }
-
-  const { listRef, jumpToLetter } = useContactKeyboardNav(
-    visibleContacts,
-    selectedContactId,
-    editingContactId,
-    selectedContact,
-    handleSelectContact,
-    handleCopyContact
-  );
 
   // Jumps from the birthdays calendar straight to a contact's detail view.
   const handleSelectContactFromBirthdays = useCallback((id: number) => {
@@ -481,9 +475,6 @@ export function App() {
           grouped={grouped}
           selectedContactId={selectedContactId}
           onSelectContact={handleSelectContact}
-          lettersPresent={lettersPresent}
-          onJumpToLetter={jumpToLetter}
-          listRef={listRef}
           selectionMode={selectionMode}
           selectedIds={selectedIds}
           onToggleSelect={toggleObjectSelection}
@@ -501,33 +492,6 @@ export function App() {
           selectedContact={selectedContact}
           onEditContact={() => selectedContact && setEditingContactId(selectedContact.id)}
           onCopyContact={handleCopyContact}
-        />
-      ) : typeName === "list" ? (
-        <ListView
-          sidebarCollapsed={sidebarCollapsed}
-          listsForCurrentType={listsForCurrentType}
-          listMemberIds={listMemberIds}
-          scopingListId={scopingListId}
-          onSelectList={handleSelectList}
-          listsRefreshing={appData.listsRefreshing}
-          onRefreshLists={appData.handleRefreshLists}
-          lists={lists}
-          scopedLists={scopedLists}
-          listSchema={listSchema}
-          selectedListId={selectedListId}
-          navigate={navigate}
-          selectionMode={selectionMode}
-          selectedIds={selectedIds}
-          onToggleSelect={toggleObjectSelection}
-          overlayListFields={overlayListFields}
-          editingListId={editingListId}
-          onCancelEditList={() => setEditingListId(null)}
-          onListSaved={handleListSaved}
-          selectedList={selectedList}
-          onEditList={() => selectedList && setEditingListId(selectedList.id)}
-          onRefreshSelectedList={handleRefreshSelectedList}
-          selectedListRefreshing={selectedListRefreshing}
-          selectedListRefreshError={selectedListRefreshError}
         />
       ) : typeName === "schema" ? (
         <SchemaView
@@ -561,17 +525,54 @@ export function App() {
           typeName={typeName}
           routeId={routeId}
           navigate={navigate}
-          genericSchema={genericBrowser.genericSchema}
-          genericObjects={genericBrowser.genericObjects}
-          scopedGenericObjects={scopedGenericObjects}
-          genericReady={genericBrowser.genericReady}
-          genericLoading={genericBrowser.genericLoading}
+          genericSchema={typeName === "list" ? listSchema : genericBrowser.genericSchema}
+          genericObjects={typeName === "list" ? (lists as unknown as SavedObject[]) : genericBrowser.genericObjects}
+          scopedGenericObjects={typeName === "list" ? (scopedLists as unknown as SavedObject[]) : scopedGenericObjects}
+          genericReady={typeName === "list" ? listSchema !== null : genericBrowser.genericReady}
+          genericLoading={typeName === "list" ? listSchema === null : genericBrowser.genericLoading}
           selectionMode={selectionMode}
           selectedIds={selectedIds}
           onToggleSelect={toggleObjectSelection}
-          editingGenericId={genericBrowser.editingGenericId}
-          setEditingGenericId={genericBrowser.setEditingGenericId}
-          saveGenericObject={genericBrowser.saveGenericObject}
+          editingGenericId={typeName === "list" ? editingListId : genericBrowser.editingGenericId}
+          setEditingGenericId={typeName === "list" ? setEditingListId : genericBrowser.setEditingGenericId}
+          saveGenericObject={typeName === "list" ? (saved) => handleListSaved(saved as unknown as ListObject) : genericBrowser.saveGenericObject}
+          subtitleFor={
+            typeName === "list"
+              ? (obj) => `${listMemberIds[obj.id]?.length ?? 0} member${listMemberIds[obj.id]?.length === 1 ? "" : "s"}`
+              : undefined
+          }
+          overlayFields={typeName === "list" ? overlayListFields : undefined}
+          extraSections={
+            typeName === "list"
+              ? (obj) => (
+                  <>
+                    <ListMembersSection list={obj as unknown as ListObject} />
+                    {selectedListRefreshError && (
+                      <Alert severity="error" sx={{ mt: 2 }}>
+                        {selectedListRefreshError}
+                      </Alert>
+                    )}
+                  </>
+                )
+              : undefined
+          }
+          extraActions={
+            typeName === "list"
+              ? (obj) => {
+                  const list = obj as unknown as ListObject;
+                  return list.query ? (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => handleRefreshSelectedList(list.id)}
+                      disabled={selectedListRefreshing}
+                    >
+                      {selectedListRefreshing ? "Refreshing…" : "Refresh"}
+                    </Button>
+                  ) : undefined;
+                }
+              : undefined
+          }
         />
       )}
 

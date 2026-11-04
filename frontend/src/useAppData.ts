@@ -9,9 +9,10 @@ import {
   fetchSchema,
 } from "./api";
 import type { Contact, ListObject, SchemaObject, TagCount } from "./types";
-import type { ListStatus } from "./components/Sidebar";
 import { SCHEMA_META_SCHEMA } from "./schemaMeta";
 import { networkErrorMessage } from "./networkError";
+
+export type ListStatus = "loading" | "error" | "ready";
 
 /** JSON object keys are strings, so turn them back into list ids. */
 function parseMemberIds(raw: Record<string, number[]>): Record<number, number[]> {

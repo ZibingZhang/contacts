@@ -1,4 +1,4 @@
-import { useRef, type ReactNode, type RefObject } from "react";
+import type { ReactNode } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
@@ -7,9 +7,12 @@ import Avatar from "@mui/material/Avatar";
 import Chip from "@mui/material/Chip";
 import type { Contact, ListObject, SchemaObject } from "../types";
 import type { SelectedFilter } from "../filters";
+import type { ListStatus } from "../useAppData";
+import { useTypeObjectKeyboardNav } from "../useTypeObjectKeyboardNav";
 import { ListsNav } from "./ListsNav";
-import { Sidebar, type ListStatus } from "./Sidebar";
-import type { ContactListHandle } from "./ContactList";
+import { TypeObjectList } from "./TypeObjectList";
+import { FilterDropdown } from "./FilterDropdown";
+import { contactLetter } from "../search";
 import { SchemaDetail, type SchemaObjectData } from "../schema-form/SchemaDetail";
 import { SchemaForm, type SavedObject } from "../schema-form/SchemaForm";
 import { buildDisplayName, initials } from "../format";
@@ -62,9 +65,6 @@ interface ContactViewProps {
   grouped: boolean;
   selectedContactId: number | null;
   onSelectContact: (id: number) => void;
-  lettersPresent: Set<string>;
-  onJumpToLetter: (letter: string) => void;
-  listRef: RefObject<ContactListHandle | null>;
   selectionMode: boolean;
   selectedIds: Set<number>;
   onToggleSelect: (id: number) => void;
@@ -104,9 +104,6 @@ export function ContactView({
   grouped,
   selectedContactId,
   onSelectContact,
-  lettersPresent,
-  onJumpToLetter,
-  listRef,
   selectionMode,
   selectedIds,
   onToggleSelect,
@@ -122,7 +119,15 @@ export function ContactView({
   onEditContact,
   onCopyContact,
 }: ContactViewProps) {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const listRef = useTypeObjectKeyboardNav<Contact>({
+    items: visibleContacts,
+    selectedId: selectedContactId,
+    editingId: editingContactId,
+    selectedItem: selectedContact,
+    onSelect: onSelectContact,
+    onCopy: onCopyContact,
+    detailContainerId: "contact-detail",
+  });
 
   return (
     <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
@@ -138,32 +143,63 @@ export function ContactView({
           onRefresh={onRefreshLists}
         />
       )}
-      {!sidebarCollapsed && (
-        <Sidebar
-          searchQuery={searchQuery}
-          onSearchChange={onSearchChange}
-          allContacts={scopedContacts}
-          selectedFilters={selectedFilters}
-          onToggleFilter={onToggleFilter}
-          onClearFilters={onClearFilters}
-          listStatus={listStatus}
-          loadError={loadError}
-          contacts={visibleContacts}
-          grouped={grouped}
-          selectedContactId={selectedContactId}
-          onSelectContact={onSelectContact}
-          lettersPresent={lettersPresent}
-          onJumpToLetter={onJumpToLetter}
-          listRef={listRef}
-          scrollContainerRef={scrollContainerRef}
-          selectionMode={selectionMode}
-          selectedIds={selectedIds}
-          onToggleSelect={onToggleSelect}
-          syncMessage={syncMessage}
-          syncError={syncError}
-          onDismissSyncStatus={onDismissSyncStatus}
-        />
-      )}
+      {!sidebarCollapsed &&
+        (contactSchema ? (
+          <TypeObjectList
+            ref={listRef}
+            schema={contactSchema}
+            objects={visibleContacts as unknown as (Record<string, unknown> & { id: number })[]}
+            selectedId={selectedContactId}
+            onSelect={onSelectContact}
+            hideAllRow
+            titleFor={(obj) => buildDisplayName((obj as unknown as Contact).name, { includeNickname: false }) || `Contact ${obj.id}`}
+            getLetter={(obj) => contactLetter(obj as unknown as Contact)}
+            headerAction={
+              <FilterDropdown
+                contacts={scopedContacts}
+                selectedFilters={selectedFilters}
+                onToggleFilter={onToggleFilter}
+                onClear={onClearFilters}
+              />
+            }
+            banner={
+              <>
+                {listStatus === "loading" && (
+                  <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                    Loading…
+                  </Typography>
+                )}
+                {listStatus === "error" && loadError && (
+                  <Box sx={{ px: 1, pt: 1 }}>
+                    <Alert severity="error">{loadError}</Alert>
+                  </Box>
+                )}
+                {(syncMessage || syncError) && (
+                  <Box sx={{ px: 1, pt: 1 }}>
+                    <Alert severity={syncError ? "error" : "success"} onClose={onDismissSyncStatus}>
+                      {syncError ?? syncMessage}
+                    </Alert>
+                  </Box>
+                )}
+              </>
+            }
+            search={{ query: searchQuery, onQueryChange: onSearchChange, grouped }}
+            widthStorageKey="contacts.sidebar.width"
+            defaultWidth={320}
+            selectionMode={selectionMode}
+            selectedIds={selectedIds}
+            onToggleSelect={onToggleSelect}
+          />
+        ) : (
+          <Box
+            sx={{
+              width: 320,
+              flexShrink: 0,
+              borderRight: 1,
+              borderColor: "divider",
+            }}
+          />
+        ))}
 
       <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
         {!contactSchema ? (
