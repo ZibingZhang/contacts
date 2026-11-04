@@ -3,7 +3,12 @@ import type { SchemaObject } from "../types";
 import { displayLabel } from "../schema-form/displayLabel";
 import { filterByRelevance, letterOf } from "../search";
 import { useDebouncedValue } from "../hooks";
-import { useLetterGroupedVirtualList, letterHeaderSx, type LetterGroupedListHandle } from "./useLetterGroupedVirtualList";
+import {
+  useLetterGroupedVirtualList,
+  letterHeaderSx,
+  stickyLetterHeaderSx,
+  type LetterGroupedListHandle,
+} from "./useLetterGroupedVirtualList";
 import { SearchBar } from "./SearchBar";
 import { AlphaIndex } from "./AlphaIndex";
 import Box from "@mui/material/Box";
@@ -145,9 +150,7 @@ export function TypeObjectList({
             </Typography>
           </ListItemButton>
           {grouped && (
-            <ListSubheader sx={{ ...letterHeaderSx, position: "sticky", top: 0, zIndex: 2 }}>
-              {activeLetter || " "}
-            </ListSubheader>
+            <ListSubheader sx={stickyLetterHeaderSx}>{activeLetter || " "}</ListSubheader>
           )}
 
           <Box sx={{ position: "relative", width: "100%", height: totalSize }}>

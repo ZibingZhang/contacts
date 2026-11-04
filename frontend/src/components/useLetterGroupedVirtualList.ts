@@ -99,7 +99,12 @@ export function useLetterGroupedVirtualList<T>({
     return result;
   }, [rows]);
 
-  const scrollMargin = leadingHeight + (grouped ? headerHeight : 0);
+  // Note: this does *not* add headerHeight for the floating sticky header --
+  // that header's own layout space is collapsed via a negative margin (see
+  // stickyLetterHeaderSx) so it overlays the first real header rather than
+  // pushing the virtualized rows down, so no extra scroll margin is needed
+  // for it.
+  const scrollMargin = leadingHeight;
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -131,7 +136,14 @@ export function useLetterGroupedVirtualList<T>({
   );
 
   const virtualRows = rowVirtualizer.getVirtualItems();
-  const activeLetter = grouped && virtualRows.length > 0 ? letterForRowIndex[virtualRows[0].index] : "";
+  // `virtualRows[0]` is the topmost *rendered* row, which includes the
+  // overscan buffer above the viewport -- using it here would attribute the
+  // header to whatever letter group that overscanned row happens to fall
+  // under (typically the previous letter), not the one actually at the top
+  // of the visible viewport. `range` is the unpadded, actually-visible index
+  // range.
+  const topVisibleIndex = rowVirtualizer.range?.startIndex;
+  const activeLetter = grouped && topVisibleIndex !== undefined ? letterForRowIndex[topVisibleIndex] : "";
 
   return {
     rows,
@@ -144,10 +156,28 @@ export function useLetterGroupedVirtualList<T>({
 
 // Shared visual style for both the floating header and each inline
 // per-letter divider row.
+const LETTER_HEADER_LINE_HEIGHT = "1.6rem";
+
 export const letterHeaderSx = {
-  lineHeight: "1.6rem",
+  lineHeight: LETTER_HEADER_LINE_HEIGHT,
   fontSize: "0.75rem",
   fontWeight: 700,
   color: "text.secondary",
   bgcolor: "background.default",
+} as const;
+
+// The persistent floating header rendered above the virtualized rows.
+// `position: sticky` requires staying in normal document flow, so a plain
+// sticky header would reserve its own height and push the first real
+// (inline) header down below it -- producing two stacked headers for the
+// same letter whenever scrolled to the very top of a group. The negative
+// margin collapses that reserved space so this header overlays the first
+// inline header instead of sitting above it; its higher zIndex then just
+// paints over the (letter-identical) row beneath it.
+export const stickyLetterHeaderSx = {
+  ...letterHeaderSx,
+  position: "sticky",
+  top: 0,
+  zIndex: 2,
+  marginBottom: `-${LETTER_HEADER_LINE_HEIGHT}`,
 } as const;

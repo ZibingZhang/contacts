@@ -2,7 +2,12 @@ import { forwardRef, memo, type RefObject } from "react";
 import type { Contact } from "../types";
 import { buildDisplayName } from "../format";
 import { contactLetter } from "../search";
-import { useLetterGroupedVirtualList, letterHeaderSx, type LetterGroupedListHandle } from "./useLetterGroupedVirtualList";
+import {
+  useLetterGroupedVirtualList,
+  letterHeaderSx,
+  stickyLetterHeaderSx,
+  type LetterGroupedListHandle,
+} from "./useLetterGroupedVirtualList";
 import Box from "@mui/material/Box";
 import ListSubheader from "@mui/material/ListSubheader";
 import ListItemButton from "@mui/material/ListItemButton";
@@ -55,6 +60,8 @@ const ContactRow = memo(function ContactRow({
       component="a"
       href="#"
       selected={isSelected}
+      dense
+      sx={{ height: ITEM_HEIGHT, py: 0 }}
       onClick={(event) => {
         event.preventDefault();
         selectionMode ? onToggleSelect(contact.id) : onSelect(contact.id);
@@ -98,9 +105,7 @@ export const ContactList = forwardRef<LetterGroupedListHandle, ContactListProps>
   return (
     <Box id="contact-list" sx={{ flexGrow: 1, alignSelf: "flex-start", minWidth: 0 }}>
       {grouped && (
-        <ListSubheader sx={{ ...letterHeaderSx, position: "sticky", top: 0, zIndex: 2 }}>
-          {activeLetter || " "}
-        </ListSubheader>
+        <ListSubheader sx={stickyLetterHeaderSx}>{activeLetter || " "}</ListSubheader>
       )}
       <Box sx={{ position: "relative", width: "100%", height: totalSize }}>
         {virtualRows.map((virtualRow) => {
