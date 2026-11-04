@@ -194,6 +194,56 @@ def test_update_object_rejects_invalid_data() -> None:
         object_service.update_object(model.TYPE_CONTACT, created["id"], {"name": "Ada"})
 
 
+def test_update_objects_replaces_fields_for_each() -> None:
+    ada = object_service.create_object(model.TYPE_CONTACT, {"name": {"first_name": "Ada"}})
+    bo = object_service.create_object(model.TYPE_CONTACT, {"name": {"first_name": "Bo"}})
+
+    updated = object_service.update_objects(
+        model.TYPE_CONTACT,
+        [
+            {"id": ada["id"], "name": {"first_name": "Ada"}, "tags": ["x"]},
+            {"id": bo["id"], "name": {"first_name": "Bo"}, "tags": ["y"]},
+        ],
+    )
+
+    assert [obj["tags"] for obj in updated] == [["x"], ["y"]]
+
+
+def test_update_objects_preserves_ctime_and_managed_fields() -> None:
+    created = object_service.create_object(model.TYPE_CONTACT, {"name": {}})
+    created["icloud"] = {"uuid": "real-uuid"}
+    object_service.write_objects(model.TYPE_CONTACT, [created])
+
+    [updated] = object_service.update_objects(
+        model.TYPE_CONTACT, [{"id": created["id"], "name": {"first_name": "Ada"}}]
+    )
+
+    assert updated["ctime"] == created["ctime"]
+    assert updated["icloud"] == {"uuid": "real-uuid"}
+
+
+def test_update_objects_is_all_or_nothing_for_a_missing_id() -> None:
+    created = object_service.create_object(model.TYPE_CONTACT, {"name": {}})
+
+    with pytest.raises(errors.NotFoundError):
+        object_service.update_objects(
+            model.TYPE_CONTACT,
+            [{"id": created["id"], "name": {}}, {"id": 999, "name": {}}],
+        )
+
+    # Nothing was written, including the valid update.
+    assert object_service.require_object(model.TYPE_CONTACT, created["id"])["name"] == {}
+
+
+def test_update_objects_rejects_invalid_data() -> None:
+    created = object_service.create_object(model.TYPE_CONTACT, {"name": {}})
+
+    with pytest.raises(errors.ValidationError):
+        object_service.update_objects(
+            model.TYPE_CONTACT, [{"id": created["id"], "name": "Ada"}]
+        )
+
+
 def test_delete_object_removes_it() -> None:
     created = object_service.create_object(model.TYPE_CONTACT, {"name": {}})
 

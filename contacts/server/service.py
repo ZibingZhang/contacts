@@ -72,39 +72,6 @@ def list_tags() -> list[dict]:
     ]
 
 
-def add_tags_to_contacts(contact_ids: list[int], tags: list[str]) -> list[Object]:
-    """Add tags to a batch of contacts, unioning with each contact's existing tags.
-
-    Args:
-        contact_ids: The ids of the contacts to update.
-        tags: The tags to add to each contact.
-
-    Returns:
-        The updated contacts, in the order given by contact_ids.
-
-    Raises:
-        errors.NotFoundError: If any of the contact_ids do not exist.
-    """
-    contacts_by_id = {contact["id"]: contact for contact in list_contacts()}
-
-    missing_ids = [
-        contact_id for contact_id in contact_ids if contact_id not in contacts_by_id
-    ]
-    if missing_ids:
-        raise errors.NotFoundError(f"Contact(s) not found: {missing_ids}")
-
-    updated_contacts = []
-    for contact_id in contact_ids:
-        contact = dict(contacts_by_id[contact_id])
-        contact["tags"] = sorted(set((contact.get("tags") or []) + tags))
-        contact["mtime"] = time.time()
-        updated_contacts.append(contact)
-
-    object_service.write_objects(model.TYPE_CONTACT, updated_contacts)
-
-    return updated_contacts
-
-
 def _begin_icloud_auth() -> dict | None:
     """Starts (non-interactive) iCloud authentication.
 

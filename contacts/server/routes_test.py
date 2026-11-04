@@ -166,35 +166,39 @@ def test_list_tags(client, contacts) -> None:
     ]
 
 
-def test_batch_add_tags(client, contacts) -> None:
-    response = client.post(
-        "/api/objects/contact/batch/tags", json={"contact_ids": [1], "tags": ["C"]}
+def test_update_objects(client, contacts) -> None:
+    response = client.put(
+        "/api/objects/contact/batch",
+        json={
+            "objects": [
+                {"id": 1, "name": {"first_name": "John", "last_name": "Smith"}, "tags": ["A", "C"]}
+            ]
+        },
     )
 
     assert response.status_code == 200
     body = response.get_json()
-    assert body["contacts"][0]["tags"] == ["A", "C"]
+    assert body["objects"][0]["tags"] == ["A", "C"]
 
 
-def test_batch_add_tags_rejects_empty_contact_ids(client, contacts) -> None:
-    response = client.post(
-        "/api/objects/contact/batch/tags", json={"contact_ids": [], "tags": ["C"]}
+def test_update_objects_rejects_an_empty_list(client, contacts) -> None:
+    response = client.put("/api/objects/contact/batch", json={"objects": []})
+
+    assert response.status_code == 400
+
+
+def test_update_objects_rejects_an_item_without_an_id(client, contacts) -> None:
+    response = client.put(
+        "/api/objects/contact/batch", json={"objects": [{"name": {}}]}
     )
 
     assert response.status_code == 400
 
 
-def test_batch_add_tags_rejects_empty_tags(client, contacts) -> None:
-    response = client.post(
-        "/api/objects/contact/batch/tags", json={"contact_ids": [1], "tags": []}
-    )
-
-    assert response.status_code == 400
-
-
-def test_batch_add_tags_missing_contact_is_404(client, contacts) -> None:
-    response = client.post(
-        "/api/objects/contact/batch/tags", json={"contact_ids": [999], "tags": ["C"]}
+def test_update_objects_missing_contact_is_404(client, contacts) -> None:
+    response = client.put(
+        "/api/objects/contact/batch",
+        json={"objects": [{"id": 999, "name": {}}]},
     )
 
     assert response.status_code == 404

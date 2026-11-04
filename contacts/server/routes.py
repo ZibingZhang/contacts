@@ -46,6 +46,24 @@ def _validate_icloud_id_list(body: Object, field_name: str) -> list[str]:
     return value
 
 
+def _validate_object_list(body: Object) -> list[Object]:
+    objects = body.get("objects")
+    if (
+        not isinstance(objects, list)
+        or not objects
+        or not all(
+            isinstance(obj, dict)
+            and isinstance(obj.get("id"), int)
+            and not isinstance(obj.get("id"), bool)
+            for obj in objects
+        )
+    ):
+        raise errors.ValidationError(
+            "objects must be a non-empty list of objects, each with an integer id"
+        )
+    return objects
+
+
 @bp.get("/health")
 def health():
     return jsonify({"status": "ok"})
@@ -105,6 +123,13 @@ def update_object(object_type: str, object_id: int):
     return jsonify(object_service.update_object(object_type, object_id, _json_body()))
 
 
+@bp.put("/objects/<object_type>/batch")
+def update_objects(object_type: str):
+    objects = _validate_object_list(_json_body())
+    updated = object_service.update_objects(object_type, objects)
+    return jsonify({"objects": updated})
+
+
 @bp.delete("/objects/<object_type>/<int:object_id>")
 def delete_object(object_type: str, object_id: int):
     deleted_associations = object_service.delete_object(object_type, object_id)
@@ -124,28 +149,6 @@ def delete_object(object_type: str, object_id: int):
 @bp.get("/tags")
 def list_tags():
     return jsonify({"tags": service.list_tags()})
-
-
-@bp.post("/objects/contact/batch/tags")
-def batch_add_tags():
-    body = _json_body()
-    contact_ids = _validate_int_list(body, "contact_ids")
-    tags = body.get("tags")
-
-    if (
-        not isinstance(tags, list)
-        or not tags
-        or not all(isinstance(tag, str) and tag.strip() for tag in tags)
-    ):
-        raise errors.ValidationError(
-            "tags must be a non-empty list of non-empty strings"
-        )
-
-    updated_contacts = service.add_tags_to_contacts(
-        contact_ids, [tag.strip() for tag in tags]
-    )
-
-    return jsonify({"contacts": updated_contacts, "tags": service.list_tags()})
 
 
 # -- Lists -----------------------------------------------------------------

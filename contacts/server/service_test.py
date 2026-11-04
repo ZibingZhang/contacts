@@ -141,47 +141,6 @@ def test_list_tags(monkeypatch, contacts) -> None:
     assert service.list_tags() == [{"tag": "A", "count": 2}, {"tag": "B", "count": 1}]
 
 
-def test_add_tags_to_contacts_unions_with_existing_tags(monkeypatch, contacts) -> None:
-    written = stub_disk(monkeypatch, contacts)
-
-    updated = service.add_tags_to_contacts([1, 3], ["B", "C"])
-
-    assert [contact["tags"] for contact in updated] == [
-        ["A", "B", "C"],
-        ["B", "C"],
-    ]
-    assert len(written) == 1
-
-
-def test_add_tags_to_contacts_does_not_mutate_the_cached_contact(
-    monkeypatch, contacts
-) -> None:
-    stub_disk(monkeypatch, contacts)
-
-    service.add_tags_to_contacts([1], ["C"])
-
-    assert contacts[0]["tags"] == ["A"]
-
-
-def test_add_tags_to_contacts_invalidates_cache(monkeypatch, contacts) -> None:
-    read_calls = count_contact_reads(monkeypatch, contacts)
-
-    service.list_contacts()
-    # Serves its own read from the warm cache, then invalidates it...
-    service.add_tags_to_contacts([1], ["C"])
-    # ...so this one has to go back to disk.
-    service.list_contacts()
-
-    assert read_calls["count"] == 2
-
-
-def test_add_tags_to_contacts_missing_id_raises(monkeypatch, contacts) -> None:
-    stub_disk(monkeypatch, contacts)
-
-    with pytest.raises(errors.NotFoundError):
-        service.add_tags_to_contacts([999], ["C"])
-
-
 # -- Pull from iCloud ------------------------------------------------------
 
 

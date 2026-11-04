@@ -105,9 +105,8 @@ export interface TagsResponse {
   tags: TagCount[];
 }
 
-export interface BatchAddTagsResponse {
-  contacts: Contact[];
-  tags: TagCount[];
+export interface BatchObjectsResponse<T> {
+  objects: T[];
 }
 
 export type SyncVerificationKind = "code" | "device_and_code";

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { fetchTags, batchAddTags, ApiError, refreshList } from "./api";
+import { fetchTags, updateObjects, ApiError, refreshList } from "./api";
 import type { Contact, ListObject, SchemaField } from "./types";
 import { contactLetter } from "./search";
 import { sameFilter, type SelectedFilter } from "./filters";
@@ -382,13 +382,27 @@ export function App() {
   }
 
   async function handleBatchAddTags(newTags: string[]) {
-    const response = await batchAddTags([...selectedIds], newTags);
-    const updatedById = new Map(response.contacts.map((contact) => [contact.id, contact]));
+    const updates = contacts
+      .filter((contact) => selectedIds.has(contact.id))
+      .map((contact) => ({
+        ...contact,
+        tags: Array.from(new Set([...(contact.tags ?? []), ...newTags])).sort(),
+      }));
+
+    const response = await updateObjects<Contact>("contact", updates);
+    const updatedById = new Map(response.objects.map((contact) => [contact.id, contact]));
     setContacts(contacts.map((contact) => updatedById.get(contact.id) ?? contact));
-    setTags(response.tags);
     setShowBatchTagModal(false);
     setSelectedIds(new Set());
     setSelectionMode(false);
+
+    try {
+      const tagsData = await fetchTags();
+      setTags(tagsData.tags);
+    } catch {
+      // Keep the existing tag list if the refresh fails; it'll catch up
+      // next time tags are reloaded.
+    }
   }
 
   function handleExportSelected() {

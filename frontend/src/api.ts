@@ -1,7 +1,7 @@
 import type {
   Association,
   AssociationsResponse,
-  BatchAddTagsResponse,
+  BatchObjectsResponse,
   Contact,
   ContactsResponse,
   ListMemberIdsResponse,
@@ -103,6 +103,13 @@ export function updateObject<T>(
   return apiPut<T>(`/objects/${objectType}/${objectId}`, payload);
 }
 
+export function updateObjects<T extends { id: number }>(
+  objectType: string,
+  objects: T[]
+): Promise<BatchObjectsResponse<T>> {
+  return apiPut<BatchObjectsResponse<T>>(`/objects/${objectType}/batch`, { objects });
+}
+
 export function deleteObject(objectType: string, objectId: number): Promise<{ status: string }> {
   return apiDelete<{ status: string }>(`/objects/${objectType}/${objectId}`);
 }
@@ -149,13 +156,6 @@ export function updateContact(contactId: number, payload: Record<string, unknown
 
 export function deleteContact(contactId: number): Promise<{ status: string }> {
   return deleteObject("contact", contactId);
-}
-
-export function batchAddTags(contactIds: number[], tags: string[]): Promise<BatchAddTagsResponse> {
-  return apiPost<BatchAddTagsResponse>("/objects/contact/batch/tags", {
-    contact_ids: contactIds,
-    tags,
-  });
 }
 
 export function startSync(): Promise<SyncResult> {

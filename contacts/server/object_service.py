@@ -224,6 +224,54 @@ def update_object(object_type: str, object_id: int, data: Object) -> Object:
     return updated
 
 
+def update_objects(object_type: str, updates: list[Object]) -> list[Object]:
+    """Replace several objects' fields in one write, each keeping its id, ctime
+    and managed fields.
+
+    All-or-nothing: every id must already exist, or nothing is written.
+
+    Args:
+        object_type: The objects' type.
+        updates: Each object's new fields, including its existing "id".
+
+    Returns:
+        The updated objects, in the order given by updates.
+
+    Raises:
+        errors.NotFoundError: If the type, or any of the ids, don't exist.
+        errors.ValidationError: If any update doesn't match the type's schema.
+    """
+    _reject_schema_type(object_type)
+    object_schema = schema_service.get_schema(object_type)
+
+    existing_by_id = {
+        update["id"]: require_object(object_type, update["id"]) for update in updates
+    }
+
+    updated_objects = []
+    for update in updates:
+        existing = existing_by_id[update["id"]]
+        prepared = _prepare(object_schema, object_type, update)
+
+        for field in object_schema.fields:
+            if field.managed and existing.get(field.key) is not None:
+                prepared[field.key] = existing[field.key]
+
+        updated_objects.append(
+            {
+                **prepared,
+                "id": update["id"],
+                "ctime": existing.get("ctime"),
+                "mtime": time.time(),
+            }
+        )
+
+    disk_dao.update_objects(object_type, updated_objects)
+    invalidate_cache(object_type)
+
+    return updated_objects
+
+
 def write_objects(object_type: str, objects: list[Object]) -> None:
     """Write already-validated objects straight through, bumping nothing.
 
