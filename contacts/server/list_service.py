@@ -21,6 +21,21 @@ def _member_type(a_list: Object) -> str:
     return a_list.get("member_type", schema.TYPE_CONTACT)
 
 
+def _require_member(member_type: str, member_id: int) -> None:
+    """Checks a prospective member exists, for whichever `member_type`.
+
+    `object_service.require_object` resolves the type through
+    `schema_service.get_schema`, which 404s for `"schema"` by design (see
+    model/schema.py) -- schema rows still exist in storage, so check for them
+    directly instead, the same way `members()` below reads them back.
+    """
+    if member_type == schema.TYPE_SCHEMA:
+        if disk_dao.read_object(member_type, member_id) is None:
+            raise errors.NotFoundError(f"{member_type} {member_id} not found")
+        return
+    object_service.require_object(member_type, member_id)
+
+
 def run_query(query: str) -> list[int]:
     """Run a list's `query` and return the object ids it matches.
 
@@ -243,7 +258,7 @@ def add_members(list_id: int, member_ids_to_add: list[int]) -> list[int]:
     member_type = _member_type(a_list)
 
     for member_id in member_ids_to_add:
-        object_service.require_object(member_type, member_id)
+        _require_member(member_type, member_id)
 
     current = association_service.member_ids_of(schema.TYPE_LIST, list_id, member_type)
     _reconcile(

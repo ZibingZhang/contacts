@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import type { ListObject } from "../types";
+import type { ListObject, SchemaObject } from "../types";
 import { fetchListMembers, fetchSchema } from "../api";
+import { SCHEMA_META_SCHEMA } from "../schemaMeta";
 import { displayLabel } from "./displayLabel";
 import { useNavigateToObject } from "./navigation";
 import Box from "@mui/material/Box";
@@ -23,7 +24,11 @@ export function ListMembersSection({ list }: { list: ListObject }) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchListMembers<Record<string, unknown>>(list.id), fetchSchema(list.member_type)])
+    // "schema" has no schema-object literally named "schema" to fetch (see
+    // schemaMeta.ts) -- use the same client-side stand-in TypeObjectList uses.
+    const schemaPromise: Promise<SchemaObject> =
+      list.member_type === SCHEMA_META_SCHEMA.name ? Promise.resolve(SCHEMA_META_SCHEMA) : fetchSchema(list.member_type);
+    Promise.all([fetchListMembers<Record<string, unknown>>(list.id), schemaPromise])
       .then(([membersData, schema]) => {
         if (cancelled) return;
         setMembers(

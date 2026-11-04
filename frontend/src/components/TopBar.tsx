@@ -20,7 +20,6 @@ import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import CakeIcon from "@mui/icons-material/Cake";
-import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import PaletteIcon from "@mui/icons-material/Palette";
 import CheckIcon from "@mui/icons-material/Check";
 
@@ -116,9 +115,6 @@ interface TopBarProps {
   onOpenAdminConsole: () => void;
   onToggleBirthdays: () => void;
   isBirthdays: boolean;
-  isSchemasView: boolean;
-  onToggleSchemas: () => void;
-  onNewSchema: () => void;
 }
 
 export function TopBar({
@@ -145,9 +141,6 @@ export function TopBar({
   onOpenAdminConsole,
   onToggleBirthdays,
   isBirthdays,
-  isSchemasView,
-  onToggleSchemas,
-  onNewSchema,
 }: TopBarProps) {
   const isContactsView = typeName === "contact";
   const isListsView = typeName === "list";
@@ -185,10 +178,6 @@ export function TopBar({
       ) : isListsView ? (
         <Button id="new-list-button" size="small" variant="contained" onClick={onNewList}>
           New List
-        </Button>
-      ) : isSchemasView ? (
-        <Button size="small" variant="contained" onClick={onNewSchema}>
-          New Schema
         </Button>
       ) : genericTypeLabel && onNewGenericObject ? (
         <Button size="small" variant="contained" onClick={onNewGenericObject}>
@@ -252,18 +241,6 @@ export function TopBar({
           </Tooltip>
         </>
       )}
-      <Tooltip title={isSchemasView ? "Switch to Contacts" : "View and edit schemas"}>
-        <IconButton
-          id="schemas-view-toggle"
-          size="small"
-          aria-label="Toggle Schemas view"
-          aria-pressed={isSchemasView}
-          color={isSchemasView ? "primary" : "default"}
-          onClick={onToggleSchemas}
-        >
-          <AccountTreeIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
       <Tooltip title={isBirthdays ? "Switch to Contacts" : "View birthday calendar"}>
         <IconButton
           id="birthdays-view-toggle"

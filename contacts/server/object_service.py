@@ -133,7 +133,10 @@ def _validate_for_type(object_type: str, data: Object) -> None:
 
     if object_type == schema.TYPE_LIST:
         member_type = data.get("member_type", schema.TYPE_CONTACT)
-        if member_type not in schema_service.type_names():
+        # "schema" is deliberately absent from `type_names()` (see
+        # model/schema.py), but schema rows are still ordinary rows a list
+        # can hold members of -- allow it as a special case.
+        if member_type != schema.TYPE_SCHEMA and member_type not in schema_service.type_names():
             raise errors.ValidationError(
                 f"member_type refers to unknown object type {member_type!r}"
             )

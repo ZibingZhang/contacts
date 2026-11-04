@@ -187,6 +187,22 @@ def test_add_members_rejects_an_object_that_does_not_exist(contacts) -> None:
         list_service.add_members(a_list["id"], [999])
 
 
+def test_add_members_accepts_schema_rows_even_though_schema_is_reserved() -> None:
+    a_list = make_list(member_type="schema")
+    contact_schema_id = schema_service.get_schema_object("contact")["id"]
+
+    assert list_service.add_members(a_list["id"], [contact_schema_id]) == [
+        contact_schema_id
+    ]
+
+
+def test_add_members_rejects_a_schema_row_that_does_not_exist() -> None:
+    a_list = make_list(member_type="schema")
+
+    with pytest.raises(errors.NotFoundError):
+        list_service.add_members(a_list["id"], [999])
+
+
 def test_remove_members_removes_the_association(contacts) -> None:
     a_list = make_list()
     list_service.add_members(a_list["id"], [1, 2])

@@ -268,6 +268,14 @@ def test_a_list_defaults_its_member_type_to_contact() -> None:
     assert created["member_type"] == model.TYPE_CONTACT
 
 
+def test_a_list_of_schemas_is_accepted_even_though_schema_is_reserved() -> None:
+    created = object_service.create_object(
+        model.TYPE_LIST, {"name": "Built-in schemas", "member_type": "schema"}
+    )
+
+    assert created["member_type"] == "schema"
+
+
 def test_a_reference_to_an_existing_object_is_accepted() -> None:
     contact = object_service.create_object(model.TYPE_CONTACT, {"name": {}})
     schema_service.create_schema(COMPANY_SCHEMA)

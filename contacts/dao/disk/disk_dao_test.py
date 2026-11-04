@@ -232,7 +232,15 @@ def test_initialize_creates_a_view_per_type() -> None:
     }
     connection.close()
 
-    assert views == {"contact", "list", "association"}
+    assert views == {"contact", "list", "association", "schema"}
+
+
+def test_the_schema_view_reads_schema_rows_even_though_schema_is_reserved() -> None:
+    connection = sqlite3.connect(DiskDao.PATH)
+    rows = connection.execute("SELECT id FROM schema").fetchall()
+    connection.close()
+
+    assert len(rows) == 3
 
 
 def test_a_type_view_reads_that_types_objects() -> None:

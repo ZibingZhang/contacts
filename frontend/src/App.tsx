@@ -41,11 +41,12 @@ import { ListsNav } from "./components/ListsNav";
 import { TypeObjectList } from "./components/TypeObjectList";
 import { TopBar } from "./components/TopBar";
 import { BirthdayView } from "./components/BirthdayView";
-import { SchemasView } from "./components/SchemasView";
+import { SchemaEditor } from "./components/SchemaEditor";
 import { BatchTagModal } from "./components/BatchTagModal";
 import { SyncVerificationModal } from "./components/SyncVerificationModal";
 import { SyncReviewModal, type SyncDirection } from "./components/SyncReviewModal";
 import { AdminConsoleModal } from "./components/AdminConsoleModal";
+import { SCHEMA_META_SCHEMA } from "./schemaMeta";
 import { SchemaDetail, type SchemaObjectData } from "./schema-form/SchemaDetail";
 import { ListMembersSection } from "./schema-form/ListMembersSection";
 import { SchemaForm, type SavedObject } from "./schema-form/SchemaForm";
@@ -148,7 +149,6 @@ export function App() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isBirthdays = location.pathname === "/birthdays";
-  const isSchemasView = location.pathname === "/schemas";
   const { typeName, id: routeId } = parseAppPath(location.pathname);
   const selectedContactId = typeName === "contact" ? routeId : null;
   const selectedListId = typeName === "list" ? routeId : null;
@@ -220,7 +220,7 @@ export function App() {
   // predates this and has list-specific needs layered on top, like
   // `listMemberIds`) rather than unifying the two, to avoid risking the
   // already-working list path while adding this.
-  const isGenericType = !isBirthdays && !isSchemasView && typeName !== "contact" && typeName !== "list";
+  const isGenericType = !isBirthdays && typeName !== "contact" && typeName !== "list" && typeName !== "schema";
   const [genericSchema, setGenericSchema] = useState<SchemaObject | null>(null);
   const [genericObjects, setGenericObjects] = useState<SavedObject[]>([]);
   const [genericLoading, setGenericLoading] = useState(false);
@@ -230,32 +230,35 @@ export function App() {
   // while the new type loads in the background (see the effect above).
   const genericReady = genericSchema !== null && genericSchema.name === typeName;
 
-  // Hand-built Schemas page -- there's no schema-object named "schema" (see
-  // SchemasView), so this can't go through the generic type browser above.
-  const [schemas, setSchemas] = useState<SchemaObject[]>([]);
-  const [editingSchemaName, setEditingSchemaName] = useState<string | "new" | null>(null);
+  // Schemas get their own dedicated branch (like "list"), not the generic
+  // type browser above -- there's no schema-object literally named "schema"
+  // (see schemaMeta.ts), and schema's own edit surface (SchemaEditor) has a
+  // different shape than SchemaForm/SchemaDetail (self-referential field
+  // list, dynamic title_field options, builtin-read-only handling).
+  const [schemaObjects, setSchemaObjects] = useState<SchemaObject[]>([]);
+  const [editingSchemaId, setEditingSchemaId] = useState<"new" | null>(null);
 
   useEffect(() => {
-    if (!isSchemasView) return;
+    if (typeName !== "schema") return;
     let cancelled = false;
     fetchSchemas()
       .then((data) => {
-        if (!cancelled) setSchemas(data.schemas);
+        if (!cancelled) setSchemaObjects(data.schemas);
       })
       .catch(() => {
-        if (!cancelled) setSchemas([]);
+        if (!cancelled) setSchemaObjects([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [isSchemasView]);
+  }, [typeName]);
 
   // A selection made while browsing one type shouldn't silently carry over
   // (and be exportable) after navigating to a different one.
   useEffect(() => {
     setSelectionMode(false);
     setSelectedIds(new Set());
-  }, [typeName, isSchemasView]);
+  }, [typeName]);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
@@ -269,6 +272,7 @@ export function App() {
     setCopySourceContact(null);
     setEditingListId(null);
     setEditingGenericId(null);
+    setEditingSchemaId(null);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -360,6 +364,8 @@ export function App() {
   }, []);
 
   // The member-type picker on the list form needs the available types.
+  // "schema" is injected synthetically (see schemaMeta.ts) since the backend
+  // never returns a schema-object literally named "schema".
   useEffect(() => {
     let cancelled = false;
     fetchSchemas()
@@ -368,7 +374,8 @@ export function App() {
         setMemberTypes(
           data.schemas
             .map((schema) => schema.name)
-            .filter((name) => name !== "schema" && name !== "association")
+            .filter((name) => name !== "association")
+            .concat(SCHEMA_META_SCHEMA.name)
             .sort()
         );
       })
@@ -475,6 +482,10 @@ export function App() {
   const scopedGenericObjects = useMemo(
     () => scopeObjectsByList(genericObjects),
     [genericObjects, scopingList, listMemberIds]
+  );
+  const scopedSchemaObjects = useMemo(
+    () => scopeObjectsByList(schemaObjects),
+    [schemaObjects, scopingList, listMemberIds]
   );
 
   // Debounced so fast typing doesn't kick off a filter pass per keystroke;
@@ -629,7 +640,7 @@ export function App() {
   function selectableObjects(): (Record<string, unknown> & { id: number })[] {
     if (typeName === "contact") return contacts as unknown as (Record<string, unknown> & { id: number })[];
     if (typeName === "list") return lists as unknown as (Record<string, unknown> & { id: number })[];
-    if (isSchemasView) return schemas as unknown as (Record<string, unknown> & { id: number })[];
+    if (typeName === "schema") return schemaObjects as unknown as (Record<string, unknown> & { id: number })[];
     return genericObjects;
   }
 
@@ -820,7 +831,7 @@ export function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${isSchemasView ? "schemas" : typeName ?? "objects"}.json`;
+    link.download = `${typeName ?? "objects"}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -829,7 +840,7 @@ export function App() {
     <NavigateToObjectContext.Provider value={navigateToObject}>
     <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <TopBar
-        typeName={isBirthdays || isSchemasView ? null : typeName}
+        typeName={isBirthdays ? null : typeName}
         onSelectType={(nextTypeName) => navigate(`/types/${nextTypeName}`)}
         isBirthdays={isBirthdays}
         onToggleBirthdays={() => navigate(isBirthdays ? "/types/contact" : "/birthdays")}
@@ -840,8 +851,10 @@ export function App() {
           setEditingContactId("new");
         }}
         onNewList={handleNewList}
-        genericTypeLabel={isGenericType ? genericSchema?.label.singular : undefined}
-        onNewGenericObject={isGenericType ? () => setEditingGenericId("new") : undefined}
+        genericTypeLabel={isGenericType ? genericSchema?.label.singular : typeName === "schema" ? "Schema" : undefined}
+        onNewGenericObject={
+          isGenericType ? () => setEditingGenericId("new") : typeName === "schema" ? () => setEditingSchemaId("new") : undefined
+        }
         canSelect={!isBirthdays}
         selectionMode={selectionMode}
         onToggleSelectionMode={toggleSelectionMode}
@@ -855,34 +868,10 @@ export function App() {
         onPull={() => handleStartSync("pull")}
         onPush={() => handleStartSync("push")}
         onOpenAdminConsole={() => setShowAdminConsole(true)}
-        isSchemasView={isSchemasView}
-        onToggleSchemas={() => navigate(isSchemasView ? "/types/contact" : "/schemas")}
-        onNewSchema={() => setEditingSchemaName("new")}
       />
 
       {isBirthdays ? (
         <BirthdayView contacts={contacts} onSelectContact={handleSelectContactFromBirthdays} />
-      ) : isSchemasView ? (
-        <SchemasView
-          schemas={schemas}
-          selectedName={editingSchemaName}
-          selectionMode={selectionMode}
-          selectedIds={selectedIds}
-          onToggleSelect={toggleObjectSelection}
-          onSelect={setEditingSchemaName}
-          onSaved={(saved) => {
-            setSchemas((prev) => {
-              const exists = prev.some((s) => s.name === saved.name);
-              return exists ? prev.map((s) => (s.name === saved.name ? saved : s)) : [...prev, saved];
-            });
-            setEditingSchemaName(saved.name);
-          }}
-          onDeleted={(name) => {
-            setSchemas((prev) => prev.filter((s) => s.name !== name));
-            setEditingSchemaName(null);
-          }}
-          onCancel={() => setEditingSchemaName(null)}
-        />
       ) : typeName === "contact" ? (
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
           {!sidebarCollapsed && (
@@ -993,6 +982,7 @@ export function App() {
               selectedId={selectedListId}
               onSelect={(id) => navigate(`/types/list/${id}`)}
               onSelectAll={() => navigate("/types/list")}
+              hideAllRow
               selectionMode={selectionMode}
               selectedIds={selectedIds}
               onToggleSelect={toggleObjectSelection}
@@ -1050,6 +1040,73 @@ export function App() {
             )}
           </Box>
         </Box>
+      ) : typeName === "schema" ? (
+        <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
+          {!sidebarCollapsed && (
+            <ListsNav
+              lists={listsForCurrentType}
+              memberIds={listMemberIds}
+              selectedListId={scopingListId}
+              onSelectList={handleSelectList}
+              allLabel="All Schemas"
+              totalCount={schemaObjects.length}
+              refreshing={listsRefreshing}
+              onRefresh={handleRefreshLists}
+            />
+          )}
+          {!sidebarCollapsed && (
+            <TypeObjectList
+              schema={SCHEMA_META_SCHEMA}
+              objects={scopedSchemaObjects as unknown as (Record<string, unknown> & { id: number })[]}
+              selectedId={routeId}
+              onSelect={(id) => navigate(`/types/schema/${id}`)}
+              onSelectAll={() => navigate("/types/schema")}
+              hideAllRow
+              subtitleFor={(obj) => ((obj as unknown as SchemaObject).builtin ? "Built-in" : "Custom")}
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleObjectSelection}
+            />
+          )}
+
+          <Box component="main" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
+            <Box sx={{ pt: 4 }}>
+              {(() => {
+                const selectedSchema = schemaObjects.find((s) => s.id === routeId) ?? null;
+                return editingSchemaId === "new" ? (
+                  <SchemaEditor
+                    schema={null}
+                    onCancel={() => setEditingSchemaId(null)}
+                    onSaved={(saved) => {
+                      setSchemaObjects((prev) => [...prev, saved]);
+                      setEditingSchemaId(null);
+                      navigate(`/types/schema/${saved.id}`);
+                    }}
+                    onDeleted={() => {}}
+                  />
+                ) : selectedSchema ? (
+                  <SchemaEditor
+                    key={selectedSchema.id}
+                    schema={selectedSchema}
+                    onCancel={() => navigate("/types/schema")}
+                    onSaved={(saved) => {
+                      setSchemaObjects((prev) => prev.map((s) => (s.id === saved.id ? saved : s)));
+                      navigate(`/types/schema/${saved.id}`);
+                    }}
+                    onDeleted={(name) => {
+                      setSchemaObjects((prev) => prev.filter((s) => s.name !== name));
+                      navigate("/types/schema");
+                    }}
+                  />
+                ) : routeId !== null ? (
+                  <Alert severity="error">Not found.</Alert>
+                ) : (
+                  <Typography color="text.secondary">Select a schema to see its details.</Typography>
+                );
+              })()}
+            </Box>
+          </Box>
+        </Box>
       ) : (
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
           {!sidebarCollapsed && genericSchema && (
@@ -1071,6 +1128,7 @@ export function App() {
               selectedId={routeId}
               onSelect={(id) => navigate(`/types/${typeName}/${id}`)}
               onSelectAll={() => navigate(`/types/${typeName}`)}
+              hideAllRow
               selectionMode={selectionMode}
               selectedIds={selectedIds}
               onToggleSelect={toggleObjectSelection}

@@ -145,7 +145,13 @@ class DiskDao:
             )
         }
 
-        for name in sorted(DiskDao._schema_names(connection) - existing):
+        # "schema" rows are stored like any other type's (see module doc),
+        # but there's deliberately no schema named "schema" to appear in
+        # `_schema_names()` (see model/schema.py) -- add it by hand so schema
+        # rows still get a queryable view, e.g. for a list's SQL `query`.
+        needs_view = DiskDao._schema_names(connection) | {schema.TYPE_SCHEMA}
+
+        for name in sorted(needs_view - existing):
             # A view definition is stored as text, so the type can't be bound
             # as a parameter. Safe to interpolate: schema names are validated
             # as identifiers, and the quotes below are escaped.

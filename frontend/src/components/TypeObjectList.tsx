@@ -30,6 +30,10 @@ interface TypeObjectListProps {
   // Click handler for the "All {plural}" row above the grouped list --
   // clears whatever is currently selected back to a neutral browsing state.
   onSelectAll: () => void;
+  // Omit the "All {plural}" row entirely -- for callers that already render
+  // an equivalent "All X" row in an adjacent sidebar (ListsNav), where
+  // showing it here too would just duplicate that row's label and count.
+  hideAllRow?: boolean;
   // A composition-root overlay for a type-specific subtitle per row (e.g. a
   // list's member count) -- TypeObjectList itself stays schema-driven.
   subtitleFor?: (obj: TypeObject) => string;
@@ -62,6 +66,7 @@ export function TypeObjectList({
   selectedId,
   onSelect,
   onSelectAll,
+  hideAllRow = false,
   subtitleFor,
   headerAction,
   selectionMode,
@@ -98,7 +103,7 @@ export function TypeObjectList({
     itemHeight: subtitleFor ? ITEM_HEIGHT_WITH_SUBTITLE : ITEM_HEIGHT,
     headerHeight: HEADER_HEIGHT,
     scrollContainerRef,
-    leadingHeight: ITEM_HEIGHT,
+    leadingHeight: hideAllRow ? 0 : ITEM_HEIGHT,
     handleRef: listHandleRef,
   });
 
@@ -143,12 +148,14 @@ export function TypeObjectList({
         sx={{ display: "flex", alignItems: "flex-start", flexGrow: 1, overflow: "auto", position: "relative" }}
       >
         <List dense disablePadding sx={{ flexGrow: 1, alignSelf: "flex-start", minWidth: 0, py: 0 }}>
-          <ListItemButton selected={selectedId === null} onClick={onSelectAll} sx={{ height: ITEM_HEIGHT }}>
-            <ListItemText primary={`All ${schema.label.plural}`} slotProps={{ primary: { noWrap: true } }} />
-            <Typography variant="caption" color="text.secondary">
-              {objects.length}
-            </Typography>
-          </ListItemButton>
+          {!hideAllRow && (
+            <ListItemButton selected={selectedId === null} onClick={onSelectAll} sx={{ height: ITEM_HEIGHT }}>
+              <ListItemText primary={`All ${schema.label.plural}`} slotProps={{ primary: { noWrap: true } }} />
+              <Typography variant="caption" color="text.secondary">
+                {objects.length}
+              </Typography>
+            </ListItemButton>
+          )}
           {grouped && (
             <ListSubheader sx={stickyLetterHeaderSx}>{activeLetter || " "}</ListSubheader>
           )}
