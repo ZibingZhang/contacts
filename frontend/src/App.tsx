@@ -1,109 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import {
-  fetchContacts,
-  fetchTags,
-  fetchLists,
-  fetchAllListMemberIds,
-  refreshLists,
-  refreshList,
-  fetchSchemas,
-  fetchSchema,
-  fetchObjects,
-  batchAddTags,
-  startSync,
-  submitSyncDevice,
-  submitSyncCode,
-  applySyncReview,
-  startPush,
-  submitPushDevice,
-  submitPushCode,
-  applyPushReview,
-  apiBaseUrl,
-  ApiError,
-} from "./api";
-import type {
-  Contact,
-  ListObject,
-  SchemaField,
-  SchemaObject,
-  TagCount,
-  SyncRequiresVerification,
-  SyncReview,
-  SyncResult,
-} from "./types";
+import { fetchTags, batchAddTags, ApiError, refreshList } from "./api";
+import type { Contact, ListObject, SchemaField } from "./types";
 import { contactLetter } from "./search";
 import { sameFilter, type SelectedFilter } from "./filters";
-import { useDebouncedValue, useFilteredContactIds, isTypingTarget } from "./hooks";
-import { Sidebar, type ListStatus } from "./components/Sidebar";
-import type { ContactListHandle } from "./components/ContactList";
-import { ListsNav } from "./components/ListsNav";
-import { TypeObjectList } from "./components/TypeObjectList";
+import { useDebouncedValue, useFilteredContactIds } from "./hooks";
+import { useAppData } from "./useAppData";
+import { useGenericTypeBrowser } from "./useGenericTypeBrowser";
+import { useSchemaObjects } from "./useSchemaObjects";
+import { useSyncFlow } from "./useSyncFlow";
+import { useContactKeyboardNav } from "./useContactKeyboardNav";
+import { ContactView } from "./components/ContactView";
+import { ListView } from "./components/ListView";
+import { SchemaView } from "./components/SchemaView";
+import { GenericTypeView } from "./components/GenericTypeView";
 import { TopBar } from "./components/TopBar";
 import { BirthdayView } from "./components/BirthdayView";
-import { SchemaEditor } from "./components/SchemaEditor";
 import { BatchTagModal } from "./components/BatchTagModal";
 import { SyncVerificationModal } from "./components/SyncVerificationModal";
-import { SyncReviewModal, type SyncDirection } from "./components/SyncReviewModal";
+import { SyncReviewModal } from "./components/SyncReviewModal";
 import { AdminConsoleModal } from "./components/AdminConsoleModal";
-import { SCHEMA_META_SCHEMA } from "./schemaMeta";
-import { SchemaDetail, type SchemaObjectData } from "./schema-form/SchemaDetail";
-import { ListMembersSection } from "./schema-form/ListMembersSection";
-import { SchemaForm, type SavedObject } from "./schema-form/SchemaForm";
 import { NavigateToObjectContext } from "./schema-form/navigation";
-import { buildDisplayName, initials } from "./format";
-import type { ReactNode } from "react";
 import Box from "@mui/material/Box";
-import Typography from "@mui/material/Typography";
-import Alert from "@mui/material/Alert";
-import Button from "@mui/material/Button";
-import CircularProgress from "@mui/material/CircularProgress";
-import Avatar from "@mui/material/Avatar";
-import Chip from "@mui/material/Chip";
-
-function networkErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return error.message;
-  }
-  return `Could not reach the contacts API at ${apiBaseUrl()} — is \`python -m contacts serve\` running?`;
-}
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "contacts.sidebar.collapsed";
-const EMPTY_GENERIC_OBJECTS: SavedObject[] = [];
-
-// The one per-type cosmetic hook in the generic renderer: a contact's
-// header keeps its avatar/initials and composed display name rather than
-// going fully plain like every other type's title. Pure/stateless, so it
-// lives outside the component rather than as a `useCallback`.
-function renderContactHeader(contact: Contact): ReactNode {
-  return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
-      <Avatar sx={{ width: 64, height: 64, fontSize: "1.25rem", fontWeight: 600 }}>{initials(contact.name)}</Avatar>
-      <Box>
-        <Typography variant="h5" sx={{ mb: 0.5 }}>
-          {buildDisplayName(contact.name) || `Contact ${contact.id}`}
-        </Typography>
-        {contact.name?.chinese_name && <Typography color="text.secondary">{contact.name.chinese_name}</Typography>}
-        {contact.tags && contact.tags.length > 0 && (
-          <Box sx={{ mt: 1, display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-            {contact.tags.map((tag) => (
-              <Chip label={tag} size="small" key={tag} />
-            ))}
-          </Box>
-        )}
-      </Box>
-    </Box>
-  );
-}
-
-/** JSON object keys are strings, so turn them back into list ids. */
-function parseMemberIds(raw: Record<string, number[]>): Record<number, number[]> {
-  const parsed: Record<number, number[]> = {};
-  for (const [listId, ids] of Object.entries(raw)) {
-    parsed[Number(listId)] = ids;
-  }
-  return parsed;
-}
 
 function readStoredSidebarCollapsed(): boolean {
   return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
@@ -131,18 +51,6 @@ function filtersFromSearchParams(searchParams: URLSearchParams): SelectedFilter[
   }
   return filters;
 }
-
-interface SyncApi {
-  start: () => Promise<SyncResult>;
-  submitDevice: (deviceIndex: number) => Promise<SyncResult>;
-  submitCode: (code: string) => Promise<SyncResult>;
-  applyReview: (createIcloudIds: string[], updateIcloudIds: string[]) => Promise<SyncResult>;
-}
-
-const SYNC_API: Record<SyncDirection, SyncApi> = {
-  pull: { start: startSync, submitDevice: submitSyncDevice, submitCode: submitSyncCode, applyReview: applySyncReview },
-  push: { start: startPush, submitDevice: submitPushDevice, submitCode: submitPushCode, applyReview: applyPushReview },
-};
 
 export function App() {
   const location = useLocation();
@@ -187,85 +95,28 @@ export function App() {
     );
   }
 
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [tags, setTags] = useState<TagCount[]>([]);
-  const [lists, setLists] = useState<ListObject[]>([]);
-  // List id -> its member object ids, loaded alongside the lists themselves
-  // since membership now lives in associations rather than on the list.
-  const [listMemberIds, setListMemberIds] = useState<Record<number, number[]>>({});
-  const [memberTypes, setMemberTypes] = useState<string[]>(["contact"]);
-  const [listSchema, setListSchema] = useState<SchemaObject | null>(null);
-  const [contactSchema, setContactSchema] = useState<SchemaObject | null>(null);
-  const [listsRefreshing, setListsRefreshing] = useState(false);
-  const [selectedListRefreshing, setSelectedListRefreshing] = useState(false);
-  const [selectedListRefreshError, setSelectedListRefreshError] = useState<string | null>(null);
+  const appData = useAppData();
+  const { contacts, setContacts, tags, setTags, lists, setLists, listMemberIds, memberTypes, listSchema, contactSchema } = appData;
+
+  // Browsing state for any type that isn't "contact", "list", or "schema" --
+  // the generic type browser.
+  const isGenericType = !isBirthdays && typeName !== "contact" && typeName !== "list" && typeName !== "schema";
+  const genericBrowser = useGenericTypeBrowser(typeName, isGenericType);
+  const schemaObjectsBrowser = useSchemaObjects(typeName);
+  const { schemaObjects, setSchemaObjects } = schemaObjectsBrowser;
+
   const [editingListId, setEditingListId] = useState<number | "new" | null>(null);
-  const [listStatus, setListStatus] = useState<ListStatus>("loading");
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBatchTagModal, setShowBatchTagModal] = useState(false);
   const [editingContactId, setEditingContactId] = useState<number | "new" | null>(null);
   const [copySourceContact, setCopySourceContact] = useState<Contact | null>(null);
-  const [syncDirection, setSyncDirection] = useState<SyncDirection | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [syncChallenge, setSyncChallenge] = useState<SyncRequiresVerification | null>(null);
-  const [syncReview, setSyncReview] = useState<SyncReview | null>(null);
   const [showAdminConsole, setShowAdminConsole] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
+  const [selectedListRefreshing, setSelectedListRefreshing] = useState(false);
+  const [selectedListRefreshError, setSelectedListRefreshError] = useState<string | null>(null);
 
-  // Browsing state for any type that isn't "contact" or "list" -- the
-  // generic type browser. Separate from `lists`' own state above (which
-  // predates this and has list-specific needs layered on top, like
-  // `listMemberIds`) rather than unifying the two, to avoid risking the
-  // already-working list path while adding this.
-  const isGenericType = !isBirthdays && typeName !== "contact" && typeName !== "list" && typeName !== "schema";
-  // Keyed by type name so switching back to a type already browsed this
-  // session (e.g. Contact -> Association -> Contact -> Association) renders
-  // instantly from cache instead of flashing an empty sidebar through a cold
-  // refetch every time -- the effect below still refreshes it in the
-  // background, it just doesn't block the render on it.
-  const [genericCache, setGenericCache] = useState<Record<string, { schema: SchemaObject; objects: SavedObject[] }>>({});
-  const [genericFailedTypes, setGenericFailedTypes] = useState<Set<string>>(new Set());
-  const [editingGenericId, setEditingGenericId] = useState<number | "new" | null>(null);
-  const cachedGenericData = genericCache[typeName] ?? null;
-  const genericSchema = isGenericType ? cachedGenericData?.schema ?? null : null;
-  // Stable empty-array reference (rather than a fresh `[]` literal every
-  // render) so memos keyed on `genericObjects` -- `scopedGenericObjects`
-  // below -- don't recompute every render while nothing's cached yet.
-  const genericObjects = (isGenericType ? cachedGenericData?.objects : undefined) ?? EMPTY_GENERIC_OBJECTS;
-  // Whether the data for the type being browsed right now is in cache.
-  const genericReady = isGenericType && cachedGenericData !== null;
-  // Derived straight from the route vs. cache, not from a `loading` flag the
-  // fetch effect sets one render later -- otherwise there's a tick right
-  // after navigating where neither this nor `genericReady` is true, and the
-  // "Unknown object type" error flashes before the spinner does.
-  const genericLoading = isGenericType && !genericReady && !genericFailedTypes.has(typeName);
-
-  // Schemas get their own dedicated branch (like "list"), not the generic
-  // type browser above -- there's no schema-object literally named "schema"
-  // (see schemaMeta.ts), and schema's own edit surface (SchemaEditor) has a
-  // different shape than SchemaForm/SchemaDetail (self-referential field
-  // list, dynamic title_field options, builtin-read-only handling).
-  const [schemaObjects, setSchemaObjects] = useState<SchemaObject[]>([]);
-  const [editingSchemaId, setEditingSchemaId] = useState<"new" | null>(null);
-
-  useEffect(() => {
-    if (typeName !== "schema") return;
-    let cancelled = false;
-    fetchSchemas()
-      .then((data) => {
-        if (!cancelled) setSchemaObjects(data.schemas);
-      })
-      .catch(() => {
-        if (!cancelled) setSchemaObjects([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [typeName]);
+  const sync = useSyncFlow(setContacts, setTags);
 
   // A selection made while browsing one type shouldn't silently carry over
   // (and be exportable) after navigating to a different one.
@@ -285,145 +136,7 @@ export function App() {
     setEditingContactId(null);
     setCopySourceContact(null);
     setEditingListId(null);
-    setEditingGenericId(null);
-    setEditingSchemaId(null);
   }, [location.pathname]);
-
-  useEffect(() => {
-    if (!isGenericType) return;
-    let cancelled = false;
-    // Always refetch on visiting a type -- even one already cached -- so the
-    // cache stays current, but never clear it first: a cached entry keeps
-    // rendering (via `genericSchema`/`genericObjects` above) the whole time
-    // this is in flight, so there's nothing to flash.
-    Promise.all([fetchSchema(typeName), fetchObjects<SavedObject>(typeName)])
-      .then(([schemaData, objectsData]) => {
-        if (cancelled) return;
-        setGenericCache((prev) => ({ ...prev, [typeName]: { schema: schemaData, objects: objectsData.objects } }));
-        setGenericFailedTypes((prev) => {
-          if (!prev.has(typeName)) return prev;
-          const next = new Set(prev);
-          next.delete(typeName);
-          return next;
-        });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        // Only surfaces as an error if this type was never cached -- a
-        // background refresh failing shouldn't blow away data already on
-        // screen.
-        setGenericFailedTypes((prev) => (prev.has(typeName) ? prev : new Set(prev).add(typeName)));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isGenericType, typeName]);
-
-  const listRef = useRef<ContactListHandle>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setListStatus("loading");
-    fetchContacts()
-      .then((data) => {
-        if (cancelled) return;
-        setContacts(data.objects);
-        setListStatus("ready");
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setLoadError(networkErrorMessage(error));
-        setListStatus("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchTags()
-      .then((data) => {
-        if (!cancelled) setTags(data.tags);
-      })
-      .catch(() => {
-        if (!cancelled) setTags([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([fetchLists(), fetchAllListMemberIds()])
-      .then(([listsData, memberIdsData]) => {
-        if (cancelled) return;
-        setLists(listsData.objects);
-        setListMemberIds(parseMemberIds(memberIdsData.member_ids));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setLists([]);
-        setListMemberIds({});
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // The member-type picker on the list form needs the available types.
-  // "schema" is injected synthetically (see schemaMeta.ts) since the backend
-  // never returns a schema-object literally named "schema".
-  useEffect(() => {
-    let cancelled = false;
-    fetchSchemas()
-      .then((data) => {
-        if (cancelled) return;
-        setMemberTypes(
-          data.schemas
-            .map((schema) => schema.name)
-            .filter((name) => name !== "association")
-            .concat(SCHEMA_META_SCHEMA.name)
-            .sort()
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setMemberTypes(["contact"]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchSchema("list")
-      .then((schema) => {
-        if (!cancelled) setListSchema(schema);
-      })
-      .catch(() => {
-        // The lists view shows an error state while this is missing.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchSchema("contact")
-      .then((schema) => {
-        if (!cancelled) setContactSchema(schema);
-      })
-      .catch(() => {
-        // The contacts view shows an error state while this is missing.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Overlays `member_type` on top of the plain schema: a `select` fed by the
   // live type registry when creating a list, read-only once it exists (a
@@ -439,20 +152,6 @@ export function App() {
       }),
     [memberTypes]
   );
-
-  async function handleRefreshLists() {
-    setListsRefreshing(true);
-    try {
-      const data = await refreshLists();
-      setLists(data.objects);
-      // Refreshing re-runs each query, so membership has to be re-read.
-      setListMemberIds(parseMemberIds((await fetchAllListMemberIds()).member_ids));
-    } catch {
-      // Keep the existing lists if the refresh fails.
-    } finally {
-      setListsRefreshing(false);
-    }
-  }
 
   // react-router keeps the URL in sync with navigation automatically, and
   // re-renders with the new location on back/forward -- no manual
@@ -490,8 +189,8 @@ export function App() {
 
   const scopedLists = useMemo(() => scopeObjectsByList(lists), [lists, scopingList, listMemberIds]);
   const scopedGenericObjects = useMemo(
-    () => scopeObjectsByList(genericObjects),
-    [genericObjects, scopingList, listMemberIds]
+    () => scopeObjectsByList(genericBrowser.genericObjects),
+    [genericBrowser.genericObjects, scopingList, listMemberIds]
   );
   const scopedSchemaObjects = useMemo(
     () => scopeObjectsByList(schemaObjects),
@@ -523,86 +222,53 @@ export function App() {
 
   const selectedContact = contacts.find((contact) => contact.id === selectedContactId) ?? null;
 
-  // Stable identity (it only ever touches the ref) so it doesn't defeat
-  // AlphaIndex's memoization on every keystroke.
-  const jumpToLetter = useCallback((letter: string) => {
-    listRef.current?.scrollToLetter(letter);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // react-router's `navigate` (from plain `<BrowserRouter>`, not a data
+  // router) gets a new identity on every route change -- it's internally
+  // named `useNavigateUnstable` -- which would otherwise force
+  // `handleSelectContact` to a new identity on every click too, defeating
+  // `ContactRow`'s memoization for every one of the ~1000 rows just to
+  // select one. Refs hold the latest values so the callback itself can stay
+  // referentially stable across renders.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const locationSearchRef = useRef(location.search);
+  locationSearchRef.current = location.search;
+
+  // Stable identity so it doesn't defeat ContactList's memoization on every
+  // keystroke in the search box. Preserves the current search/filter/list
+  // scoping query params -- only the selected contact itself changes.
+  const handleSelectContact = useCallback((id: number) => {
+    navigateRef.current({ pathname: `/types/contact/${id}`, search: locationSearchRef.current });
   }, []);
 
-  // Moves the selection by `delta` positions within the currently displayed
-  // list, wrapping to the first/last contact if nothing is selected yet.
-  function moveSelection(delta: number) {
-    if (!visibleContacts.length) {
-      return;
-    }
-    const currentIndex = visibleContacts.findIndex((c) => c.id === selectedContactId);
-    const nextIndex = currentIndex === -1 ? (delta > 0 ? 0 : visibleContacts.length - 1) : currentIndex + delta;
-    if (nextIndex < 0 || nextIndex >= visibleContacts.length) {
-      return;
-    }
-    const nextContact = visibleContacts[nextIndex];
-    handleSelectContact(nextContact.id);
-    listRef.current?.scrollToId(nextContact.id, "auto");
+  function handleCopyContact(contact: Contact) {
+    setCopySourceContact(contact);
+    setEditingContactId("new");
   }
 
-  // Jumps the selection straight to the first or last contact in the
-  // currently displayed list.
-  function selectBoundaryContact(position: "first" | "last") {
-    if (!visibleContacts.length) {
-      return;
-    }
-    const contact = position === "first" ? visibleContacts[0] : visibleContacts[visibleContacts.length - 1];
-    handleSelectContact(contact.id);
-    listRef.current?.scrollToId(contact.id, position === "first" ? "start" : "end");
-  }
+  const { listRef, jumpToLetter } = useContactKeyboardNav(
+    visibleContacts,
+    selectedContactId,
+    editingContactId,
+    selectedContact,
+    handleSelectContact,
+    handleCopyContact
+  );
 
-  // Scrolls the edit form's container all the way to its top or bottom.
-  function scrollEditFormToBoundary(position: "top" | "bottom") {
-    const container = document.getElementById("contact-detail");
-    if (!container) {
-      return;
-    }
-    container.scrollTo({ top: position === "top" ? 0 : container.scrollHeight });
-  }
+  // Jumps from the birthdays calendar straight to a contact's detail view.
+  const handleSelectContactFromBirthdays = useCallback((id: number) => {
+    navigateRef.current(`/types/contact/${id}`);
+  }, []);
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      const jumpToBoundary = event.metaKey || event.ctrlKey;
-      // While editing, Cmd/Ctrl+Up/Down scrolls the form instead of jumping
-      // the (hidden) list selection out from under the contact being edited.
-      if (editingContactId !== null && jumpToBoundary && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-        event.preventDefault();
-        scrollEditFormToBoundary(event.key === "ArrowDown" ? "bottom" : "top");
-        return;
-      }
-      if (editingContactId !== null) {
-        return;
-      }
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        jumpToBoundary ? selectBoundaryContact("last") : moveSelection(1);
-      } else if (event.key === "ArrowUp") {
-        event.preventDefault();
-        jumpToBoundary ? selectBoundaryContact("first") : moveSelection(-1);
-      } else if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey && !isTypingTarget(event.target)) {
-        event.preventDefault();
-        document.getElementById("search-input")?.focus();
-      } else if (
-        (event.key === "c" || event.key === "C") &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !isTypingTarget(event.target) &&
-        selectedContact
-      ) {
-        event.preventDefault();
-        handleCopyContact(selectedContact);
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [visibleContacts, selectedContactId, editingContactId, selectedContact]);
+  // How the generic renderer (reference fields, the Lists section, list
+  // member rows) navigates to another object -- generic by construction,
+  // since every type (including "list") is just `/types/<name>/<id>` now.
+  const navigateToObject = useCallback(
+    (objectType: string, id: number) => {
+      navigate(`/types/${objectType}/${id}`);
+    },
+    [navigate]
+  );
 
   // Scoping the current type's sidebar to a list (like switching a mailbox
   // folder) resets the search/filter/selection state, rather than carrying
@@ -651,7 +317,7 @@ export function App() {
     if (typeName === "contact") return contacts as unknown as (Record<string, unknown> & { id: number })[];
     if (typeName === "list") return lists as unknown as (Record<string, unknown> & { id: number })[];
     if (typeName === "schema") return schemaObjects as unknown as (Record<string, unknown> & { id: number })[];
-    return genericObjects;
+    return genericBrowser.genericObjects;
   }
 
   function selectAllVisible() {
@@ -659,75 +325,8 @@ export function App() {
     setSelectedIds(new Set(ids));
   }
 
-  async function finishSync(direction: SyncDirection, result: SyncResult) {
-    if (result.status === "requires_verification") {
-      setSyncChallenge(result);
-      return;
-    }
-    if (result.status === "review") {
-      setSyncChallenge(null);
-      setSyncReview(result);
-      return;
-    }
-    setSyncChallenge(null);
-    setSyncReview(null);
-    setSyncing(false);
-    const [contactsData, tagsData] = await Promise.all([fetchContacts(), fetchTags()]);
-    setContacts(contactsData.objects);
-    setTags(tagsData.tags);
-    const verb = direction === "pull" ? "Pulled from" : "Pushed to";
-    setSyncMessage(
-      result.created === 0 && result.updated === 0
-        ? "Already up to date with iCloud."
-        : `${verb} iCloud: ${result.created} created, ${result.updated} updated.`
-    );
-  }
-
-  async function handleStartSync(direction: SyncDirection) {
-    setSyncDirection(direction);
-    setSyncing(true);
-    setSyncError(null);
-    setSyncMessage(null);
-    try {
-      await finishSync(direction, await SYNC_API[direction].start());
-    } catch (error) {
-      setSyncError(networkErrorMessage(error));
-      setSyncing(false);
-    }
-  }
-
-  async function handleSyncSelectDevice(deviceIndex: number) {
-    if (!syncDirection) return;
-    const result = await SYNC_API[syncDirection].submitDevice(deviceIndex);
-    if (result.status === "requires_verification") {
-      setSyncChallenge(result);
-    }
-  }
-
-  async function handleSyncSubmitCode(code: string) {
-    if (!syncDirection) return;
-    await finishSync(syncDirection, await SYNC_API[syncDirection].submitCode(code));
-  }
-
-  function handleSyncCancel() {
-    setSyncChallenge(null);
-    setSyncing(false);
-    setSyncDirection(null);
-  }
-
-  async function handleSyncReviewApply(createIcloudIds: string[], updateIcloudIds: string[]) {
-    if (!syncDirection) return;
-    await finishSync(syncDirection, await SYNC_API[syncDirection].applyReview(createIcloudIds, updateIcloudIds));
-  }
-
-  function handleSyncReviewCancel() {
-    setSyncReview(null);
-    setSyncing(false);
-    setSyncDirection(null);
-  }
-
   async function handleContactSaved(contact: Contact) {
-    setContacts((prev) => {
+    setContacts((prev: Contact[]) => {
       const exists = prev.some((c) => c.id === contact.id);
       return exists ? prev.map((c) => (c.id === contact.id ? contact : c)) : [...prev, contact];
     });
@@ -748,13 +347,13 @@ export function App() {
   }
 
   async function handleListSaved(list: ListObject) {
-    setLists((prev) => {
+    setLists((prev: ListObject[]) => {
       const exists = prev.some((l) => l.id === list.id);
       return exists ? prev.map((l) => (l.id === list.id ? list : l)) : [...prev, list];
     });
     // Saving a list runs/changes its query server-side, so re-read membership.
     try {
-      setListMemberIds(parseMemberIds((await fetchAllListMemberIds()).member_ids));
+      await appData.refetchListMemberIds();
     } catch {
       // Counts will catch up on the next load.
     }
@@ -763,12 +362,10 @@ export function App() {
   }
 
   function handleListRefreshed(list: ListObject) {
-    setLists((prev) => prev.map((l) => (l.id === list.id ? list : l)));
-    fetchAllListMemberIds()
-      .then((data) => setListMemberIds(parseMemberIds(data.member_ids)))
-      .catch(() => {
-        // Counts will catch up on the next load.
-      });
+    setLists((prev: ListObject[]) => prev.map((l) => (l.id === list.id ? list : l)));
+    appData.refetchListMemberIds().catch(() => {
+      // Counts will catch up on the next load.
+    });
   }
 
   async function handleRefreshSelectedList(listId: number) {
@@ -784,49 +381,10 @@ export function App() {
     }
   }
 
-  // react-router's `navigate` (from plain `<BrowserRouter>`, not a data
-  // router) gets a new identity on every route change -- it's internally
-  // named `useNavigateUnstable` -- which would otherwise force
-  // `handleSelectContact` to a new identity on every click too, defeating
-  // `ContactRow`'s memoization for every one of the ~1000 rows just to
-  // select one. Refs hold the latest values so the callback itself can stay
-  // referentially stable across renders.
-  const navigateRef = useRef(navigate);
-  navigateRef.current = navigate;
-  const locationSearchRef = useRef(location.search);
-  locationSearchRef.current = location.search;
-
-  // Stable identity so it doesn't defeat ContactList's memoization on every
-  // keystroke in the search box. Preserves the current search/filter/list
-  // scoping query params -- only the selected contact itself changes.
-  const handleSelectContact = useCallback((id: number) => {
-    navigateRef.current({ pathname: `/types/contact/${id}`, search: locationSearchRef.current });
-  }, []);
-
-  // Jumps from the birthdays calendar straight to a contact's detail view.
-  const handleSelectContactFromBirthdays = useCallback((id: number) => {
-    navigateRef.current(`/types/contact/${id}`);
-  }, []);
-
-  // How the generic renderer (reference fields, the Lists section, list
-  // member rows) navigates to another object -- generic by construction,
-  // since every type (including "list") is just `/types/<name>/<id>` now.
-  const navigateToObject = useCallback(
-    (objectType: string, id: number) => {
-      navigate(`/types/${objectType}/${id}`);
-    },
-    [navigate]
-  );
-
-  function handleCopyContact(contact: Contact) {
-    setCopySourceContact(contact);
-    setEditingContactId("new");
-  }
-
   async function handleBatchAddTags(newTags: string[]) {
     const response = await batchAddTags([...selectedIds], newTags);
     const updatedById = new Map(response.contacts.map((contact) => [contact.id, contact]));
-    setContacts((prev) => prev.map((contact) => updatedById.get(contact.id) ?? contact));
+    setContacts(contacts.map((contact) => updatedById.get(contact.id) ?? contact));
     setTags(response.tags);
     setShowBatchTagModal(false);
     setSelectedIds(new Set());
@@ -861,9 +419,13 @@ export function App() {
           setEditingContactId("new");
         }}
         onNewList={handleNewList}
-        genericTypeLabel={isGenericType ? genericSchema?.label.singular : typeName === "schema" ? "Schema" : undefined}
+        genericTypeLabel={isGenericType ? genericBrowser.genericSchema?.label.singular : typeName === "schema" ? "Schema" : undefined}
         onNewGenericObject={
-          isGenericType ? () => setEditingGenericId("new") : typeName === "schema" ? () => setEditingSchemaId("new") : undefined
+          isGenericType
+            ? () => genericBrowser.setEditingGenericId("new")
+            : typeName === "schema"
+              ? () => schemaObjectsBrowser.setEditingSchemaId("new")
+              : undefined
         }
         canSelect={!isBirthdays}
         selectionMode={selectionMode}
@@ -873,353 +435,130 @@ export function App() {
         onClearSelection={() => setSelectedIds(new Set())}
         onAddTags={() => setShowBatchTagModal(true)}
         onExportSelected={handleExportSelected}
-        syncing={syncing}
-        syncDirection={syncDirection}
-        onPull={() => handleStartSync("pull")}
-        onPush={() => handleStartSync("push")}
+        syncing={sync.syncing}
+        syncDirection={sync.syncDirection}
+        onPull={() => sync.handleStartSync("pull")}
+        onPush={() => sync.handleStartSync("push")}
         onOpenAdminConsole={() => setShowAdminConsole(true)}
       />
 
       {isBirthdays ? (
         <BirthdayView contacts={contacts} onSelectContact={handleSelectContactFromBirthdays} />
       ) : typeName === "contact" ? (
-        <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
-          {!sidebarCollapsed && (
-            <ListsNav
-              lists={listsForCurrentType}
-              memberIds={listMemberIds}
-              selectedListId={scopingListId}
-              onSelectList={handleSelectList}
-              allLabel="All Contacts"
-              totalCount={contacts.length}
-              refreshing={listsRefreshing}
-              onRefresh={handleRefreshLists}
-            />
-          )}
-          {!sidebarCollapsed && (
-            <Sidebar
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              allContacts={scopedContacts}
-              selectedFilters={selectedFilters}
-              onToggleFilter={toggleFilter}
-              onClearFilters={() => setSelectedFilters([])}
-              listStatus={listStatus}
-              loadError={loadError}
-              contacts={visibleContacts}
-              grouped={grouped}
-              selectedContactId={selectedContactId}
-              onSelectContact={handleSelectContact}
-              lettersPresent={lettersPresent}
-              onJumpToLetter={jumpToLetter}
-              listRef={listRef}
-              scrollContainerRef={scrollContainerRef}
-              selectionMode={selectionMode}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleObjectSelection}
-              syncMessage={syncMessage}
-              syncError={syncError}
-              onDismissSyncStatus={() => {
-                setSyncMessage(null);
-                setSyncError(null);
-              }}
-            />
-          )}
-
-          <Box component="main" id="contact-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
-            {!contactSchema ? (
-              <Alert severity="error" sx={{ mt: 4 }}>
-                Could not load the contact schema.
-              </Alert>
-            ) : editingContactId !== null ? (
-              <SchemaForm
-                key={editingContactId}
-                schema={contactSchema}
-                value={
-                  editingContactId === "new"
-                    ? null
-                    : (contacts.find((c) => c.id === editingContactId) as unknown as SavedObject | undefined) ?? null
-                }
-                initialDraft={editingContactId === "new" ? (copySourceContact as unknown as Record<string, unknown>) ?? undefined : undefined}
-                onCancel={() => {
-                  setEditingContactId(null);
-                  setCopySourceContact(null);
-                }}
-                onSaved={(saved) => handleContactSaved(saved as unknown as Contact)}
-              />
-            ) : (
-              <Box sx={{ pt: 4 }}>
-                {selectedContact ? (
-                  <SchemaDetail
-                    key={selectedContact.id}
-                    schema={contactSchema}
-                    data={selectedContact as unknown as SchemaObjectData}
-                    onEdit={() => setEditingContactId(selectedContact.id)}
-                    renderHeader={() => renderContactHeader(selectedContact)}
-                    extraActions={
-                      <Button variant="outlined" size="small" onClick={() => handleCopyContact(selectedContact)}>
-                        Copy
-                      </Button>
-                    }
-                  />
-                ) : selectedContactId !== null ? (
-                  <Alert severity="error">Contact not found.</Alert>
-                ) : (
-                  <Typography color="text.secondary">Select a contact to see their details.</Typography>
-                )}
-              </Box>
-            )}
-          </Box>
-        </Box>
+        <ContactView
+          sidebarCollapsed={sidebarCollapsed}
+          listsForCurrentType={listsForCurrentType}
+          listMemberIds={listMemberIds}
+          scopingListId={scopingListId}
+          onSelectList={handleSelectList}
+          totalCount={contacts.length}
+          listsRefreshing={appData.listsRefreshing}
+          onRefreshLists={appData.handleRefreshLists}
+          contacts={contacts}
+          scopedContacts={scopedContacts}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          selectedFilters={selectedFilters}
+          onToggleFilter={toggleFilter}
+          onClearFilters={() => setSelectedFilters([])}
+          listStatus={appData.listStatus}
+          loadError={appData.loadError}
+          visibleContacts={visibleContacts}
+          grouped={grouped}
+          selectedContactId={selectedContactId}
+          onSelectContact={handleSelectContact}
+          lettersPresent={lettersPresent}
+          onJumpToLetter={jumpToLetter}
+          listRef={listRef}
+          selectionMode={selectionMode}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleObjectSelection}
+          syncMessage={sync.syncMessage}
+          syncError={sync.syncError}
+          onDismissSyncStatus={sync.dismissSyncStatus}
+          contactSchema={contactSchema}
+          editingContactId={editingContactId}
+          copySourceContact={copySourceContact}
+          onCancelEdit={() => {
+            setEditingContactId(null);
+            setCopySourceContact(null);
+          }}
+          onContactSaved={handleContactSaved}
+          selectedContact={selectedContact}
+          onEditContact={() => selectedContact && setEditingContactId(selectedContact.id)}
+          onCopyContact={handleCopyContact}
+        />
       ) : typeName === "list" ? (
-        <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
-          {!sidebarCollapsed && (
-            <ListsNav
-              lists={listsForCurrentType}
-              memberIds={listMemberIds}
-              selectedListId={scopingListId}
-              onSelectList={handleSelectList}
-              allLabel="All Lists"
-              totalCount={lists.length}
-              refreshing={listsRefreshing}
-              onRefresh={handleRefreshLists}
-            />
-          )}
-          {!sidebarCollapsed && listSchema && (
-            <TypeObjectList
-              schema={listSchema}
-              objects={scopedLists as unknown as (Record<string, unknown> & { id: number })[]}
-              selectedId={selectedListId}
-              onSelect={(id) => navigate(`/types/list/${id}`)}
-              onSelectAll={() => navigate("/types/list")}
-              hideAllRow
-              selectionMode={selectionMode}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleObjectSelection}
-              subtitleFor={(obj) => `${listMemberIds[obj.id]?.length ?? 0} member${listMemberIds[obj.id]?.length === 1 ? "" : "s"}`}
-            />
-          )}
-
-          <Box component="main" id="list-detail" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
-            {!listSchema ? (
-              <Alert severity="error" sx={{ mt: 4 }}>
-                Could not load the list schema.
-              </Alert>
-            ) : editingListId !== null ? (
-              <SchemaForm
-                key={editingListId}
-                schema={listSchema}
-                value={editingListId === "new" ? null : (lists.find((l) => l.id === editingListId) as SavedObject | undefined) ?? null}
-                overlayFields={overlayListFields}
-                onCancel={() => setEditingListId(null)}
-                onSaved={(saved) => handleListSaved(saved as unknown as ListObject)}
-              />
-            ) : (
-              <Box sx={{ pt: 4 }}>
-                {selectedList ? (
-                  <SchemaDetail
-                    key={selectedList.id}
-                    schema={listSchema}
-                    data={selectedList as unknown as SchemaObjectData}
-                    onEdit={() => setEditingListId(selectedList.id)}
-                    extraSections={<ListMembersSection list={selectedList} />}
-                    extraActions={
-                      selectedList.query ? (
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={() => handleRefreshSelectedList(selectedList.id)}
-                          disabled={selectedListRefreshing}
-                        >
-                          {selectedListRefreshing ? "Refreshing…" : "Refresh"}
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                ) : selectedListId !== null ? (
-                  <Alert severity="error">List not found.</Alert>
-                ) : (
-                  <Typography color="text.secondary">Select a list to see its details.</Typography>
-                )}
-                {selectedListRefreshError && (
-                  <Alert severity="error" sx={{ mt: 2 }}>
-                    {selectedListRefreshError}
-                  </Alert>
-                )}
-              </Box>
-            )}
-          </Box>
-        </Box>
+        <ListView
+          sidebarCollapsed={sidebarCollapsed}
+          listsForCurrentType={listsForCurrentType}
+          listMemberIds={listMemberIds}
+          scopingListId={scopingListId}
+          onSelectList={handleSelectList}
+          listsRefreshing={appData.listsRefreshing}
+          onRefreshLists={appData.handleRefreshLists}
+          lists={lists}
+          scopedLists={scopedLists}
+          listSchema={listSchema}
+          selectedListId={selectedListId}
+          navigate={navigate}
+          selectionMode={selectionMode}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleObjectSelection}
+          overlayListFields={overlayListFields}
+          editingListId={editingListId}
+          onCancelEditList={() => setEditingListId(null)}
+          onListSaved={handleListSaved}
+          selectedList={selectedList}
+          onEditList={() => selectedList && setEditingListId(selectedList.id)}
+          onRefreshSelectedList={handleRefreshSelectedList}
+          selectedListRefreshing={selectedListRefreshing}
+          selectedListRefreshError={selectedListRefreshError}
+        />
       ) : typeName === "schema" ? (
-        <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
-          {!sidebarCollapsed && (
-            <ListsNav
-              lists={listsForCurrentType}
-              memberIds={listMemberIds}
-              selectedListId={scopingListId}
-              onSelectList={handleSelectList}
-              allLabel="All Schemas"
-              totalCount={schemaObjects.length}
-              refreshing={listsRefreshing}
-              onRefresh={handleRefreshLists}
-            />
-          )}
-          {!sidebarCollapsed && (
-            <TypeObjectList
-              schema={SCHEMA_META_SCHEMA}
-              objects={scopedSchemaObjects as unknown as (Record<string, unknown> & { id: number })[]}
-              selectedId={routeId}
-              onSelect={(id) => navigate(`/types/schema/${id}`)}
-              onSelectAll={() => navigate("/types/schema")}
-              hideAllRow
-              subtitleFor={(obj) => ((obj as unknown as SchemaObject).builtin ? "Built-in" : "Custom")}
-              selectionMode={selectionMode}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleObjectSelection}
-            />
-          )}
-
-          <Box component="main" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
-            <Box sx={{ pt: 4 }}>
-              {(() => {
-                const selectedSchema = schemaObjects.find((s) => s.id === routeId) ?? null;
-                return editingSchemaId === "new" ? (
-                  <SchemaEditor
-                    schema={null}
-                    onCancel={() => setEditingSchemaId(null)}
-                    onSaved={(saved) => {
-                      setSchemaObjects((prev) => [...prev, saved]);
-                      setEditingSchemaId(null);
-                      navigate(`/types/schema/${saved.id}`);
-                    }}
-                    onDeleted={() => {}}
-                  />
-                ) : selectedSchema ? (
-                  <SchemaEditor
-                    key={selectedSchema.id}
-                    schema={selectedSchema}
-                    onCancel={() => navigate("/types/schema")}
-                    onSaved={(saved) => {
-                      setSchemaObjects((prev) => prev.map((s) => (s.id === saved.id ? saved : s)));
-                      navigate(`/types/schema/${saved.id}`);
-                    }}
-                    onDeleted={(name) => {
-                      setSchemaObjects((prev) => prev.filter((s) => s.name !== name));
-                      navigate("/types/schema");
-                    }}
-                  />
-                ) : routeId !== null ? (
-                  <Alert severity="error">Not found.</Alert>
-                ) : (
-                  <Typography color="text.secondary">Select a schema to see its details.</Typography>
-                );
-              })()}
-            </Box>
-          </Box>
-        </Box>
+        <SchemaView
+          sidebarCollapsed={sidebarCollapsed}
+          listsForCurrentType={listsForCurrentType}
+          listMemberIds={listMemberIds}
+          scopingListId={scopingListId}
+          onSelectList={handleSelectList}
+          listsRefreshing={appData.listsRefreshing}
+          onRefreshLists={appData.handleRefreshLists}
+          schemaObjects={schemaObjects}
+          setSchemaObjects={setSchemaObjects}
+          scopedSchemaObjects={scopedSchemaObjects}
+          routeId={routeId}
+          navigate={navigate}
+          selectionMode={selectionMode}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleObjectSelection}
+          editingSchemaId={schemaObjectsBrowser.editingSchemaId}
+          setEditingSchemaId={schemaObjectsBrowser.setEditingSchemaId}
+        />
       ) : (
-        <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
-          {!sidebarCollapsed && (
-            // Unlike TypeObjectList below, ListsNav doesn't need the generic
-            // schema to render -- lists/memberIds are already loaded
-            // app-wide -- so it never has to wait on the per-type fetch.
-            <ListsNav
-              lists={listsForCurrentType}
-              memberIds={listMemberIds}
-              selectedListId={scopingListId}
-              onSelectList={handleSelectList}
-              allLabel={genericSchema ? `All ${genericSchema.label.plural}` : "All"}
-              totalCount={genericObjects.length}
-              refreshing={listsRefreshing}
-              onRefresh={handleRefreshLists}
-            />
-          )}
-          {!sidebarCollapsed &&
-            (genericSchema ? (
-              <TypeObjectList
-                schema={genericSchema}
-                objects={scopedGenericObjects}
-                selectedId={routeId}
-                onSelect={(id) => navigate(`/types/${typeName}/${id}`)}
-                onSelectAll={() => navigate(`/types/${typeName}`)}
-                hideAllRow
-                selectionMode={selectionMode}
-                selectedIds={selectedIds}
-                onToggleSelect={toggleObjectSelection}
-              />
-            ) : (
-              // Schema not cached yet for this type -- a same-sized
-              // placeholder column instead of rendering nothing, so the
-              // layout doesn't collapse and reflow once it arrives.
-              <Box
-                sx={{
-                  width: 280,
-                  flexShrink: 0,
-                  borderRight: 1,
-                  borderColor: "divider",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <CircularProgress size={24} />
-              </Box>
-            ))}
-
-          <Box component="main" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
-            {!genericReady ? (
-              genericLoading ? (
-                <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>
-                  <CircularProgress />
-                </Box>
-              ) : (
-                <Alert severity="error" sx={{ mt: 4 }}>
-                  Unknown object type "{typeName}".
-                </Alert>
-              )
-            ) : editingGenericId !== null ? (
-              <SchemaForm
-                key={editingGenericId}
-                schema={genericSchema}
-                value={editingGenericId === "new" ? null : genericObjects.find((o) => o.id === editingGenericId) ?? null}
-                onCancel={() => setEditingGenericId(null)}
-                onSaved={(saved) => {
-                  setGenericCache((prev) => {
-                    const existing = prev[typeName];
-                    if (!existing) return prev;
-                    const exists = existing.objects.some((o) => o.id === saved.id);
-                    const objects = exists
-                      ? existing.objects.map((o) => (o.id === saved.id ? saved : o))
-                      : [...existing.objects, saved];
-                    return { ...prev, [typeName]: { ...existing, objects } };
-                  });
-                  setEditingGenericId(null);
-                  navigate(`/types/${typeName}/${saved.id}`);
-                }}
-              />
-            ) : (
-              <Box sx={{ pt: 4 }}>
-                {(() => {
-                  const selectedGenericObject = genericObjects.find((o) => o.id === routeId) ?? null;
-                  return selectedGenericObject ? (
-                    <SchemaDetail
-                      key={selectedGenericObject.id}
-                      schema={genericSchema}
-                      data={selectedGenericObject as unknown as SchemaObjectData}
-                      onEdit={() => setEditingGenericId(selectedGenericObject.id)}
-                    />
-                  ) : routeId !== null ? (
-                    <Alert severity="error">Not found.</Alert>
-                  ) : (
-                    <Typography color="text.secondary">
-                      Select a {genericSchema.label.singular.toLowerCase()} to see its details.
-                    </Typography>
-                  );
-                })()}
-              </Box>
-            )}
-          </Box>
-        </Box>
+        <GenericTypeView
+          sidebarCollapsed={sidebarCollapsed}
+          listsForCurrentType={listsForCurrentType}
+          listMemberIds={listMemberIds}
+          scopingListId={scopingListId}
+          onSelectList={handleSelectList}
+          listsRefreshing={appData.listsRefreshing}
+          onRefreshLists={appData.handleRefreshLists}
+          typeName={typeName}
+          routeId={routeId}
+          navigate={navigate}
+          genericSchema={genericBrowser.genericSchema}
+          genericObjects={genericBrowser.genericObjects}
+          scopedGenericObjects={scopedGenericObjects}
+          genericReady={genericBrowser.genericReady}
+          genericLoading={genericBrowser.genericLoading}
+          selectionMode={selectionMode}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleObjectSelection}
+          editingGenericId={genericBrowser.editingGenericId}
+          setEditingGenericId={genericBrowser.setEditingGenericId}
+          saveGenericObject={genericBrowser.saveGenericObject}
+        />
       )}
 
       {showBatchTagModal && (
@@ -1231,21 +570,21 @@ export function App() {
         />
       )}
 
-      {syncChallenge && (
+      {sync.syncChallenge && (
         <SyncVerificationModal
-          challenge={syncChallenge}
-          onCancel={handleSyncCancel}
-          onSelectDevice={handleSyncSelectDevice}
-          onSubmitCode={handleSyncSubmitCode}
+          challenge={sync.syncChallenge}
+          onCancel={sync.handleSyncCancel}
+          onSelectDevice={sync.handleSyncSelectDevice}
+          onSubmitCode={sync.handleSyncSubmitCode}
         />
       )}
 
-      {syncReview && syncDirection && (
+      {sync.syncReview && sync.syncDirection && (
         <SyncReviewModal
-          review={syncReview}
-          direction={syncDirection}
-          onCancel={handleSyncReviewCancel}
-          onApply={handleSyncReviewApply}
+          review={sync.syncReview}
+          direction={sync.syncDirection}
+          onCancel={sync.handleSyncReviewCancel}
+          onApply={sync.handleSyncReviewApply}
         />
       )}
 
