@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { useDebouncedValue } from "../hooks";
 import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
 import type { Contact } from "../types";
 import type { SelectedFilter } from "../filters";
 import { SearchBar } from "./SearchBar";
 import { FilterDropdown } from "./FilterDropdown";
-import { ContactList } from "./ContactList";
+import { ContactList, type ContactListHandle } from "./ContactList";
 import { AlphaIndex } from "./AlphaIndex";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -37,7 +38,7 @@ interface SidebarProps {
   onSelectContact: (id: number) => void;
   lettersPresent: Set<string>;
   onJumpToLetter: (letter: string) => void;
-  listRef: RefObject<HTMLDivElement | null>;
+  listRef: RefObject<ContactListHandle | null>;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   selectionMode: boolean;
   selectedIds: Set<number>;
@@ -90,21 +91,24 @@ export function Sidebar({
   // time the sidebar mounts (it fully unmounts while the parent collapses
   // it, so the scroll position is lost). Depends on `contacts` rather than
   // firing once, since filtering runs debounced through a Web Worker — the
-  // selected item may not exist in the DOM yet on the first pass after the
-  // initial fetch resolves.
+  // selected contact may not exist in `contacts` yet on the first pass
+  // after the initial fetch resolves. Debounced rather than reacting to
+  // every `contacts` change directly: the very first non-empty value is a
+  // synchronous, not-yet-alphabetized fallback (see useFilteredContactIds)
+  // that the real, sorted result supersedes a moment later -- scrolling
+  // into a list mid-reorder like that corrupts the virtualizer's internal
+  // offset cache (rows end up scattered with huge gaps), so this waits for
+  // `contacts` to stop changing before ever scrolling at all.
+  const settledContacts = useDebouncedValue(contacts, 100);
   const didScrollToSelectionRef = useRef(false);
   useEffect(() => {
     if (didScrollToSelectionRef.current || selectedContactIdRef.current === null) {
       return;
     }
-    const item = listRef.current?.querySelector<HTMLElement>(
-      `[data-contact-id="${selectedContactIdRef.current}"]`
-    );
-    if (item) {
-      item.scrollIntoView({ block: "center" });
+    if (listRef.current?.scrollToId(selectedContactIdRef.current, "center")) {
       didScrollToSelectionRef.current = true;
     }
-  }, [contacts, listRef]);
+  }, [settledContacts, listRef]);
 
   // Mutates the nav element's width directly, bypassing React state, so a
   // drag doesn't trigger a re-render (and full reconciliation of the
@@ -228,11 +232,12 @@ export function Sidebar({
         }}
       >
         <ContactList
+          ref={listRef}
           contacts={contacts}
           grouped={grouped}
           selectedContactId={selectedContactId}
           onSelect={onSelectContact}
-          listRef={listRef}
+          scrollContainerRef={scrollContainerRef}
           selectionMode={selectionMode}
           selectedIds={selectedIds}
           onToggleSelect={onToggleSelect}

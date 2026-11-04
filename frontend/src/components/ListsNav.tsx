@@ -13,11 +13,14 @@ import SyncIcon from "@mui/icons-material/Sync";
 const WIDTH = 190;
 
 interface ListsNavProps {
+  // Lists already narrowed to the current object type's member_type -- this
+  // component doesn't know about types, just renders what it's given.
   lists: ListObject[];
   memberIds: Record<number, number[]>;
   selectedListId: number | null;
   onSelectList: (listId: number | null) => void;
-  totalContactCount: number;
+  allLabel: string;
+  totalCount: number;
   refreshing: boolean;
   onRefresh: () => void;
 }
@@ -27,7 +30,8 @@ export function ListsNav({
   memberIds,
   selectedListId,
   onSelectList,
-  totalContactCount,
+  allLabel,
+  totalCount,
   refreshing,
   onRefresh,
 }: ListsNavProps) {
@@ -47,13 +51,13 @@ export function ListsNav({
     >
       <List dense sx={{ py: 0 }}>
         <ListItemButton
-          id="lists-nav-all-contacts"
+          id="lists-nav-all"
           selected={selectedListId === null}
           onClick={() => onSelectList(null)}
         >
-          <ListItemText primary="All Contacts" />
+          <ListItemText primary={allLabel} />
           <Typography variant="caption" color="text.secondary">
-            {totalContactCount}
+            {totalCount}
           </Typography>
         </ListItemButton>
       </List>

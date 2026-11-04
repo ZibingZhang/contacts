@@ -36,6 +36,7 @@ import { contactLetter } from "./search";
 import { sameFilter, type SelectedFilter } from "./filters";
 import { useDebouncedValue, useFilteredContactIds, isTypingTarget } from "./hooks";
 import { Sidebar, type ListStatus } from "./components/Sidebar";
+import type { ContactListHandle } from "./components/ContactList";
 import { ListsNav } from "./components/ListsNav";
 import { TypeObjectList } from "./components/TypeObjectList";
 import { TopBar } from "./components/TopBar";
@@ -55,12 +56,9 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
-import Tooltip from "@mui/material/Tooltip";
-import IconButton from "@mui/material/IconButton";
 import CircularProgress from "@mui/material/CircularProgress";
 import Avatar from "@mui/material/Avatar";
 import Chip from "@mui/material/Chip";
-import SyncIcon from "@mui/icons-material/Sync";
 
 function networkErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -227,6 +225,10 @@ export function App() {
   const [genericObjects, setGenericObjects] = useState<SavedObject[]>([]);
   const [genericLoading, setGenericLoading] = useState(false);
   const [editingGenericId, setEditingGenericId] = useState<number | "new" | null>(null);
+  // Whether `genericSchema`/`genericObjects` actually belong to the type
+  // being browsed right now, vs. being the previous type's data left up
+  // while the new type loads in the background (see the effect above).
+  const genericReady = genericSchema !== null && genericSchema.name === typeName;
 
   // Hand-built Schemas page -- there's no schema-object named "schema" (see
   // SchemasView), so this can't go through the generic type browser above.
@@ -277,13 +279,12 @@ export function App() {
       return;
     }
     let cancelled = false;
-    // Clear the previous type's schema/objects (rather than leaving them up
-    // while the new type loads) so a direct generic-to-generic navigation
-    // (e.g. company -> association) can't render under the wrong type's
-    // schema, and gate the "unknown type" message on `genericLoading` below
-    // so a load in flight isn't mistaken for a type that doesn't exist.
-    setGenericSchema(null);
-    setGenericObjects([]);
+    // Keep the previous type's schema/objects rendered (rather than blanking
+    // them out) while the new type loads, so the sidebar doesn't disappear
+    // on a generic-to-generic navigation (e.g. company -> association) --
+    // `genericReady` below gates the *main detail panel* on the loaded data
+    // actually matching `typeName`, so stale data never renders as if it
+    // were the new type's.
     setGenericLoading(true);
     Promise.all([fetchSchema(typeName), fetchObjects<SavedObject>(typeName)])
       .then(([schemaData, objectsData]) => {
@@ -304,7 +305,7 @@ export function App() {
     };
   }, [isGenericType, typeName]);
 
-  const listRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<ContactListHandle>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -441,11 +442,12 @@ export function App() {
   // pushState/popstate bookkeeping needed (see main.tsx for why `App` is
   // still only ever one component instance across all of that).
 
-  // The list that scopes the contacts sidebar -- the current "view" that
-  // search/filters/the alpha index all then narrow further. A missing/
-  // deleted list falls back to all contacts rather than showing an empty
-  // list. Distinct from `selectedListId` (the Lists type-browser's own
-  // selection) -- see where `scopingListId` is derived above.
+  // The list that scopes the current type's second-tier sidebar -- the
+  // current "view" that search/filters/the alpha index all then narrow
+  // further. A missing/deleted list falls back to "all objects of this
+  // type" rather than showing an empty list. Distinct from `selectedListId`
+  // (the Lists type-browser's own selection) -- see where `scopingListId` is
+  // derived above.
   const selectedList = lists.find((list) => list.id === selectedListId) ?? null;
   const scopingList = lists.find((list) => list.id === scopingListId) ?? null;
   const scopedContacts = useMemo(() => {
@@ -455,6 +457,25 @@ export function App() {
     const idSet = new Set(listMemberIds[scopingList.id] ?? []);
     return contacts.filter((contact) => idSet.has(contact.id));
   }, [contacts, scopingList, listMemberIds]);
+
+  // The Lists-tier nav only ever shows lists whose member_type matches the
+  // type currently being browsed -- a list of companies has no business
+  // showing up while browsing contacts, and vice versa.
+  const listsForCurrentType = useMemo(() => lists.filter((list) => list.member_type === typeName), [lists, typeName]);
+
+  function scopeObjectsByList<T extends { id: number }>(allObjects: T[]): T[] {
+    if (scopingList === null) {
+      return allObjects;
+    }
+    const idSet = new Set(listMemberIds[scopingList.id] ?? []);
+    return allObjects.filter((obj) => idSet.has(obj.id));
+  }
+
+  const scopedLists = useMemo(() => scopeObjectsByList(lists), [lists, scopingList, listMemberIds]);
+  const scopedGenericObjects = useMemo(
+    () => scopeObjectsByList(genericObjects),
+    [genericObjects, scopingList, listMemberIds]
+  );
 
   // Debounced so fast typing doesn't kick off a filter pass per keystroke;
   // the actual filtering then runs in a Web Worker, off the main thread.
@@ -481,41 +502,10 @@ export function App() {
 
   const selectedContact = contacts.find((contact) => contact.id === selectedContactId) ?? null;
 
-  function findListItem(id: number): HTMLElement | null {
-    return listRef.current?.querySelector<HTMLElement>(`[data-contact-id="${id}"]`) ?? null;
-  }
-
-  // Scrolls `item` to the top of the list, then nudges past any sticky letter
-  // header immediately above it so the header doesn't end up pinned on top
-  // of (and hiding) the item itself.
-  function scrollListItemToTop(item: HTMLElement) {
-    item.scrollIntoView({ block: "start" });
-    const prev = item.previousElementSibling as HTMLElement | null;
-    if (prev && prev.classList.contains("contact-letter-header") && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop -= prev.offsetHeight;
-    }
-  }
-
-  // Scrolls via the header's first contact item rather than the header
-  // itself. The header is `position: sticky`, so once it's been scrolled
-  // past, browsers report its position/rect as wherever it's currently
-  // pinned rather than its true document position — scrollIntoView on it is
-  // then a no-op, which is why jumping to an earlier letter (up) silently
-  // failed while jumping to a later one (down) worked. Contact items aren't
-  // sticky, so their position is always reported accurately.
-  // Stable identity (it only ever touches refs/the DOM) so it doesn't defeat
+  // Stable identity (it only ever touches the ref) so it doesn't defeat
   // AlphaIndex's memoization on every keystroke.
   const jumpToLetter = useCallback((letter: string) => {
-    const header = document.getElementById(`contact-letter-${letter}`);
-    if (!header) {
-      return;
-    }
-    const firstItem = header.nextElementSibling as HTMLElement | null;
-    if (firstItem) {
-      scrollListItemToTop(firstItem);
-    } else {
-      header.scrollIntoView({ block: "start" });
-    }
+    listRef.current?.scrollToLetter(letter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -532,7 +522,7 @@ export function App() {
     }
     const nextContact = visibleContacts[nextIndex];
     handleSelectContact(nextContact.id);
-    findListItem(nextContact.id)?.scrollIntoView({ block: "nearest" });
+    listRef.current?.scrollToId(nextContact.id, "auto");
   }
 
   // Jumps the selection straight to the first or last contact in the
@@ -543,15 +533,7 @@ export function App() {
     }
     const contact = position === "first" ? visibleContacts[0] : visibleContacts[visibleContacts.length - 1];
     handleSelectContact(contact.id);
-    const item = findListItem(contact.id);
-    if (!item) {
-      return;
-    }
-    if (position === "first") {
-      scrollListItemToTop(item);
-    } else {
-      item.scrollIntoView({ block: "end" });
-    }
+    listRef.current?.scrollToId(contact.id, position === "first" ? "start" : "end");
   }
 
   // Scrolls the edit form's container all the way to its top or bottom.
@@ -601,13 +583,13 @@ export function App() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [visibleContacts, selectedContactId, editingContactId, selectedContact]);
 
-  // Scoping the contacts sidebar to a list (like switching a mailbox
+  // Scoping the current type's sidebar to a list (like switching a mailbox
   // folder) resets the search/filter/selection state, rather than carrying
   // it over from whatever was previously scoped.
   function handleSelectList(listId: number | null) {
     const next = new URLSearchParams();
     if (listId !== null) next.set("list", String(listId));
-    navigate({ pathname: "/types/contact", search: next.toString() });
+    navigate({ pathname: `/types/${typeName}`, search: next.toString() });
     setSelectionMode(false);
     setSelectedIds(new Set());
   }
@@ -905,11 +887,12 @@ export function App() {
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
           {!sidebarCollapsed && (
             <ListsNav
-              lists={lists}
+              lists={listsForCurrentType}
               memberIds={listMemberIds}
               selectedListId={scopingListId}
               onSelectList={handleSelectList}
-              totalContactCount={contacts.length}
+              allLabel="All Contacts"
+              totalCount={contacts.length}
               refreshing={listsRefreshing}
               onRefresh={handleRefreshLists}
             />
@@ -991,10 +974,22 @@ export function App() {
         </Box>
       ) : typeName === "list" ? (
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
+          {!sidebarCollapsed && (
+            <ListsNav
+              lists={listsForCurrentType}
+              memberIds={listMemberIds}
+              selectedListId={scopingListId}
+              onSelectList={handleSelectList}
+              allLabel="All Lists"
+              totalCount={lists.length}
+              refreshing={listsRefreshing}
+              onRefresh={handleRefreshLists}
+            />
+          )}
           {!sidebarCollapsed && listSchema && (
             <TypeObjectList
               schema={listSchema}
-              objects={lists as unknown as (Record<string, unknown> & { id: number })[]}
+              objects={scopedLists as unknown as (Record<string, unknown> & { id: number })[]}
               selectedId={selectedListId}
               onSelect={(id) => navigate(`/types/list/${id}`)}
               onSelectAll={() => navigate("/types/list")}
@@ -1002,15 +997,6 @@ export function App() {
               selectedIds={selectedIds}
               onToggleSelect={toggleObjectSelection}
               subtitleFor={(obj) => `${listMemberIds[obj.id]?.length ?? 0} member${listMemberIds[obj.id]?.length === 1 ? "" : "s"}`}
-              headerAction={
-                <Tooltip title="Re-run each list's query to refresh its membership">
-                  <span>
-                    <IconButton size="small" aria-label="Refresh lists" onClick={handleRefreshLists} disabled={listsRefreshing}>
-                      {listsRefreshing ? <CircularProgress size={18} /> : <SyncIcon fontSize="small" />}
-                    </IconButton>
-                  </span>
-                </Tooltip>
-              }
             />
           )}
 
@@ -1067,25 +1053,32 @@ export function App() {
       ) : (
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
           {!sidebarCollapsed && genericSchema && (
+            <ListsNav
+              lists={listsForCurrentType}
+              memberIds={listMemberIds}
+              selectedListId={scopingListId}
+              onSelectList={handleSelectList}
+              allLabel={`All ${genericSchema.label.plural}`}
+              totalCount={genericObjects.length}
+              refreshing={listsRefreshing}
+              onRefresh={handleRefreshLists}
+            />
+          )}
+          {!sidebarCollapsed && genericSchema && (
             <TypeObjectList
               schema={genericSchema}
-              objects={genericObjects}
+              objects={scopedGenericObjects}
               selectedId={routeId}
               onSelect={(id) => navigate(`/types/${typeName}/${id}`)}
               onSelectAll={() => navigate(`/types/${typeName}`)}
               selectionMode={selectionMode}
               selectedIds={selectedIds}
               onToggleSelect={toggleObjectSelection}
-              subtitleFor={
-                typeName === "association"
-                  ? (obj) => `${obj.object_type_1} #${obj.object_id_1} ↔ ${obj.object_type_2} #${obj.object_id_2}`
-                  : undefined
-              }
             />
           )}
 
           <Box component="main" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
-            {!genericSchema ? (
+            {!genericReady ? (
               genericLoading ? (
                 <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>
                   <CircularProgress />

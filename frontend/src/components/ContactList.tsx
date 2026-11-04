@@ -1,20 +1,26 @@
-import { memo, type ReactNode, type RefObject } from "react";
+import { forwardRef, memo, type RefObject } from "react";
 import type { Contact } from "../types";
 import { buildDisplayName } from "../format";
 import { contactLetter } from "../search";
-import List from "@mui/material/List";
+import { useLetterGroupedVirtualList, letterHeaderSx, type LetterGroupedListHandle } from "./useLetterGroupedVirtualList";
+import Box from "@mui/material/Box";
 import ListSubheader from "@mui/material/ListSubheader";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Checkbox from "@mui/material/Checkbox";
 
+export type { LetterGroupedListHandle as ContactListHandle } from "./useLetterGroupedVirtualList";
+
 interface ContactListProps {
   contacts: Contact[];
   grouped: boolean;
   selectedContactId: number | null;
   onSelect: (id: number) => void;
-  listRef: RefObject<HTMLDivElement | null>;
+  // The scrollable ancestor (owned by Sidebar) the virtualizer measures
+  // against -- unlike TypeObjectList, that Box lives outside this
+  // component, so it has to come in as a prop rather than an internal ref.
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
   selectionMode: boolean;
   selectedIds: Set<number>;
   onToggleSelect: (id: number) => void;
@@ -29,13 +35,11 @@ interface ContactRowProps {
   onToggleSelect: (id: number) => void;
 }
 
+const ITEM_HEIGHT = 36;
+
 // Its own memoized component so that selecting a contact — which changes
-// `isSelected` for exactly two rows out of what can be thousands — only
-// re-renders those two. Without this, ContactList's own memo bails as a
-// whole (see below) only when nothing changed; a selection change can't
-// bail that way since `selectedContactId` itself is the thing that
-// changed, so every row would otherwise re-run its MUI/emotion styling on
-// every click.
+// `isSelected` for exactly two rows out of what can be on screen — only
+// re-renders those two.
 const ContactRow = memo(function ContactRow({
   contact,
   isSelected,
@@ -51,7 +55,6 @@ const ContactRow = memo(function ContactRow({
       component="a"
       href="#"
       selected={isSelected}
-      data-contact-id={contact.id}
       onClick={(event) => {
         event.preventDefault();
         selectionMode ? onToggleSelect(contact.id) : onSelect(contact.id);
@@ -75,76 +78,61 @@ const ContactRow = memo(function ContactRow({
 
 // Renders the contact list. When `grouped` is set, contacts are assumed to
 // already be sorted so that same-letter contacts are contiguous, and a
-// sticky letter header is inserted before each new letter group.
-//
-// Memoized because this list can run into the thousands of items — each a
-// handful of MUI components — so re-running this on every keystroke in the
-// search box (which re-renders the whole sidebar) is a visible jank source
-// even when `contacts` itself hasn't changed yet (e.g. while debounced
-// filtering is still pending). Callers must pass stable callback
-// references (e.g. via `useCallback`) or this bailout does nothing.
-export const ContactList = memo(function ContactList({
-  contacts,
-  grouped,
-  selectedContactId,
-  onSelect,
-  listRef,
-  selectionMode,
-  selectedIds,
-  onToggleSelect,
-}: ContactListProps) {
-  const items: ReactNode[] = [];
-  let currentLetter: string | null = null;
-
-  for (const contact of contacts) {
-    if (grouped) {
-      const letter = contactLetter(contact);
-      if (letter !== currentLetter) {
-        currentLetter = letter;
-        items.push(
-          <ListSubheader
-            className="contact-letter-header"
-            id={`contact-letter-${letter}`}
-            key={`header-${letter}`}
-            sx={{
-              position: "sticky",
-              top: 0,
-              zIndex: 1,
-              lineHeight: "1.6rem",
-              fontSize: "0.75rem",
-              fontWeight: 700,
-              color: "text.secondary",
-              bgcolor: "background.default",
-            }}
-          >
-            {letter}
-          </ListSubheader>
-        );
-      }
-    }
-
-    items.push(
-      <ContactRow
-        contact={contact}
-        isSelected={contact.id === selectedContactId}
-        isChecked={selectedIds.has(contact.id)}
-        selectionMode={selectionMode}
-        onSelect={onSelect}
-        onToggleSelect={onToggleSelect}
-        key={contact.id}
-      />
-    );
-  }
+// letter header is inserted before each new letter group. Virtualized via
+// `useLetterGroupedVirtualList` (shared with TypeObjectList) since this can
+// run into the thousands of contacts.
+export const ContactList = forwardRef<LetterGroupedListHandle, ContactListProps>(function ContactList(
+  { contacts, grouped, selectedContactId, onSelect, scrollContainerRef, selectionMode, selectedIds, onToggleSelect },
+  ref
+) {
+  const { rows, virtualRows, totalSize, scrollMargin, activeLetter } = useLetterGroupedVirtualList({
+    items: contacts,
+    grouped,
+    getId: (contact) => contact.id,
+    getLetter: contactLetter,
+    itemHeight: ITEM_HEIGHT,
+    scrollContainerRef,
+    handleRef: ref,
+  });
 
   return (
-    <List
-      component="div"
-      id="contact-list"
-      disablePadding
-      sx={{ flexGrow: 1, alignSelf: "flex-start", minWidth: 0 }}
-      ref={listRef}
-    >
-      {items}
-    </List>
+    <Box id="contact-list" sx={{ flexGrow: 1, alignSelf: "flex-start", minWidth: 0 }}>
+      {grouped && (
+        <ListSubheader sx={{ ...letterHeaderSx, position: "sticky", top: 0, zIndex: 2 }}>
+          {activeLetter || " "}
+        </ListSubheader>
+      )}
+      <Box sx={{ position: "relative", width: "100%", height: totalSize }}>
+        {virtualRows.map((virtualRow) => {
+          const row = rows[virtualRow.index];
+          return (
+            <Box
+              key={virtualRow.key}
+              sx={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: virtualRow.size,
+                transform: `translateY(${virtualRow.start - scrollMargin}px)`,
+              }}
+            >
+              {row.kind === "header" ? (
+                <ListSubheader sx={letterHeaderSx}>{row.letter}</ListSubheader>
+              ) : (
+                <ContactRow
+                  contact={row.item}
+                  isSelected={row.item.id === selectedContactId}
+                  isChecked={selectedIds.has(row.item.id)}
+                  selectionMode={selectionMode}
+                  onSelect={onSelect}
+                  onToggleSelect={onToggleSelect}
+                />
+              )}
+            </Box>
+          );
+        })}
+      </Box>
+    </Box>
   );
 });

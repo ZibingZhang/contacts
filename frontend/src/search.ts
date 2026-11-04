@@ -178,6 +178,29 @@ export function filterContacts(contacts: Contact[], query: string): Contact[] {
   return scored.map((entry) => entry.contact);
 }
 
+// Filters and ranks arbitrary items by the same tiered subsequence matching
+// as `filterContacts`, via a caller-supplied `textOf` -- used for the
+// generic (non-contact) object sidebars, where "name" is whatever the
+// schema's display label resolves to rather than a fixed field.
+export function filterByRelevance<T>(items: T[], query: string, textOf: (item: T) => string): T[] {
+  const normalizedQuery = normalizeForSearch(query.trim());
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  if (!tokens.length) {
+    return items;
+  }
+
+  const scored: { item: T; score: number; text: string }[] = [];
+  for (const item of items) {
+    const text = normalizeForSearch(textOf(item));
+    const score = scoreText(text, normalizedQuery, tokens);
+    if (score !== null) {
+      scored.push({ item, score, text });
+    }
+  }
+  scored.sort((a, b) => b.score - a.score || a.text.localeCompare(b.text));
+  return scored.map((entry) => entry.item);
+}
+
 // Filters and ranks a plain list of strings (e.g. autocomplete options) by
 // the same tiered subsequence matching as `filterContacts`, so a query's
 // letters just need to appear in order somewhere in the option.

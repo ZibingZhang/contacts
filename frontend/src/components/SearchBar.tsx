@@ -7,9 +7,10 @@ import ClearIcon from "@mui/icons-material/Clear";
 interface SearchBarProps {
   value: string;
   onChange: (value: string) => void;
+  placeholder?: string;
 }
 
-export function SearchBar({ value, onChange }: SearchBarProps) {
+export function SearchBar({ value, onChange, placeholder = "Search contacts…" }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -18,8 +19,8 @@ export function SearchBar({ value, onChange }: SearchBarProps) {
       id="search-input"
       size="small"
       fullWidth
-      placeholder="Search contacts…"
-      aria-label="Search contacts"
+      placeholder={placeholder}
+      aria-label={placeholder.replace(/…$/, "")}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={(event) => {

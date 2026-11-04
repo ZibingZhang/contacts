@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Contact } from "./types";
 import type { SelectedFilter } from "./filters";
 import type { FilterWorkerRequest, FilterWorkerResponse } from "./filterWorker";
+import { compareByName } from "./search";
 
 // True when a keyboard event's target is already a place the user types
 // into, so single-key shortcuts know to stay out of its way.
@@ -39,7 +40,14 @@ export interface FilteredContacts {
 // pass in a Web Worker so it never blocks the main thread or input
 // responsiveness. Falls back to the unfiltered id list (tagged with
 // whatever query was requested) until the worker's first response lands,
-// to avoid a one-frame empty flash.
+// to avoid a one-frame empty flash. While there's no query, that fallback
+// is still alphabetized (matching what the worker would itself return for
+// an empty query) rather than left in raw/insertion order -- callers that
+// group by letter rely on the "same-letter contacts are contiguous"
+// assumption documented on `FilteredContacts.query` below, and an
+// unsorted fallback briefly violates it every time `contacts` first
+// populates, which previously just logged a duplicate-key warning but
+// now corrupts the virtualized contact list's cached row offsets.
 export function useFilteredContactIds(contacts: Contact[], query: string, filters: SelectedFilter[]): FilteredContacts {
   const workerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
@@ -70,5 +78,6 @@ export function useFilteredContactIds(contacts: Contact[], query: string, filter
     workerRef.current?.postMessage(message);
   }, [contacts, query, filters]);
 
-  return result ?? { ids: contacts.map((contact) => contact.id), query };
+  const fallbackContacts = query.trim() ? contacts : [...contacts].sort(compareByName);
+  return result ?? { ids: fallbackContacts.map((contact) => contact.id), query };
 }
