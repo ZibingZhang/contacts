@@ -69,6 +69,7 @@ function networkErrorMessage(error: unknown): string {
 }
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "contacts.sidebar.collapsed";
+const EMPTY_GENERIC_OBJECTS: SavedObject[] = [];
 
 // The one per-type cosmetic hook in the generic renderer: a contact's
 // header keeps its avatar/initials and composed display name rather than
@@ -221,14 +222,27 @@ export function App() {
   // `listMemberIds`) rather than unifying the two, to avoid risking the
   // already-working list path while adding this.
   const isGenericType = !isBirthdays && typeName !== "contact" && typeName !== "list" && typeName !== "schema";
-  const [genericSchema, setGenericSchema] = useState<SchemaObject | null>(null);
-  const [genericObjects, setGenericObjects] = useState<SavedObject[]>([]);
-  const [genericLoading, setGenericLoading] = useState(false);
+  // Keyed by type name so switching back to a type already browsed this
+  // session (e.g. Contact -> Association -> Contact -> Association) renders
+  // instantly from cache instead of flashing an empty sidebar through a cold
+  // refetch every time -- the effect below still refreshes it in the
+  // background, it just doesn't block the render on it.
+  const [genericCache, setGenericCache] = useState<Record<string, { schema: SchemaObject; objects: SavedObject[] }>>({});
+  const [genericFailedTypes, setGenericFailedTypes] = useState<Set<string>>(new Set());
   const [editingGenericId, setEditingGenericId] = useState<number | "new" | null>(null);
-  // Whether `genericSchema`/`genericObjects` actually belong to the type
-  // being browsed right now, vs. being the previous type's data left up
-  // while the new type loads in the background (see the effect above).
-  const genericReady = genericSchema !== null && genericSchema.name === typeName;
+  const cachedGenericData = genericCache[typeName] ?? null;
+  const genericSchema = isGenericType ? cachedGenericData?.schema ?? null : null;
+  // Stable empty-array reference (rather than a fresh `[]` literal every
+  // render) so memos keyed on `genericObjects` -- `scopedGenericObjects`
+  // below -- don't recompute every render while nothing's cached yet.
+  const genericObjects = (isGenericType ? cachedGenericData?.objects : undefined) ?? EMPTY_GENERIC_OBJECTS;
+  // Whether the data for the type being browsed right now is in cache.
+  const genericReady = isGenericType && cachedGenericData !== null;
+  // Derived straight from the route vs. cache, not from a `loading` flag the
+  // fetch effect sets one render later -- otherwise there's a tick right
+  // after navigating where neither this nor `genericReady` is true, and the
+  // "Unknown object type" error flashes before the spinner does.
+  const genericLoading = isGenericType && !genericReady && !genericFailedTypes.has(typeName);
 
   // Schemas get their own dedicated branch (like "list"), not the generic
   // type browser above -- there's no schema-object literally named "schema"
@@ -276,33 +290,29 @@ export function App() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!isGenericType) {
-      setGenericSchema(null);
-      setGenericObjects([]);
-      setGenericLoading(false);
-      return;
-    }
+    if (!isGenericType) return;
     let cancelled = false;
-    // Keep the previous type's schema/objects rendered (rather than blanking
-    // them out) while the new type loads, so the sidebar doesn't disappear
-    // on a generic-to-generic navigation (e.g. company -> association) --
-    // `genericReady` below gates the *main detail panel* on the loaded data
-    // actually matching `typeName`, so stale data never renders as if it
-    // were the new type's.
-    setGenericLoading(true);
+    // Always refetch on visiting a type -- even one already cached -- so the
+    // cache stays current, but never clear it first: a cached entry keeps
+    // rendering (via `genericSchema`/`genericObjects` above) the whole time
+    // this is in flight, so there's nothing to flash.
     Promise.all([fetchSchema(typeName), fetchObjects<SavedObject>(typeName)])
       .then(([schemaData, objectsData]) => {
         if (cancelled) return;
-        setGenericSchema(schemaData);
-        setGenericObjects(objectsData.objects);
+        setGenericCache((prev) => ({ ...prev, [typeName]: { schema: schemaData, objects: objectsData.objects } }));
+        setGenericFailedTypes((prev) => {
+          if (!prev.has(typeName)) return prev;
+          const next = new Set(prev);
+          next.delete(typeName);
+          return next;
+        });
       })
       .catch(() => {
         if (cancelled) return;
-        setGenericSchema(null);
-        setGenericObjects([]);
-      })
-      .finally(() => {
-        if (!cancelled) setGenericLoading(false);
+        // Only surfaces as an error if this type was never cached -- a
+        // background refresh failing shouldn't blow away data already on
+        // screen.
+        setGenericFailedTypes((prev) => (prev.has(typeName) ? prev : new Set(prev).add(typeName)));
       });
     return () => {
       cancelled = true;
@@ -1109,31 +1119,52 @@ export function App() {
         </Box>
       ) : (
         <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
-          {!sidebarCollapsed && genericSchema && (
+          {!sidebarCollapsed && (
+            // Unlike TypeObjectList below, ListsNav doesn't need the generic
+            // schema to render -- lists/memberIds are already loaded
+            // app-wide -- so it never has to wait on the per-type fetch.
             <ListsNav
               lists={listsForCurrentType}
               memberIds={listMemberIds}
               selectedListId={scopingListId}
               onSelectList={handleSelectList}
-              allLabel={`All ${genericSchema.label.plural}`}
+              allLabel={genericSchema ? `All ${genericSchema.label.plural}` : "All"}
               totalCount={genericObjects.length}
               refreshing={listsRefreshing}
               onRefresh={handleRefreshLists}
             />
           )}
-          {!sidebarCollapsed && genericSchema && (
-            <TypeObjectList
-              schema={genericSchema}
-              objects={scopedGenericObjects}
-              selectedId={routeId}
-              onSelect={(id) => navigate(`/types/${typeName}/${id}`)}
-              onSelectAll={() => navigate(`/types/${typeName}`)}
-              hideAllRow
-              selectionMode={selectionMode}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleObjectSelection}
-            />
-          )}
+          {!sidebarCollapsed &&
+            (genericSchema ? (
+              <TypeObjectList
+                schema={genericSchema}
+                objects={scopedGenericObjects}
+                selectedId={routeId}
+                onSelect={(id) => navigate(`/types/${typeName}/${id}`)}
+                onSelectAll={() => navigate(`/types/${typeName}`)}
+                hideAllRow
+                selectionMode={selectionMode}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleObjectSelection}
+              />
+            ) : (
+              // Schema not cached yet for this type -- a same-sized
+              // placeholder column instead of rendering nothing, so the
+              // layout doesn't collapse and reflow once it arrives.
+              <Box
+                sx={{
+                  width: 280,
+                  flexShrink: 0,
+                  borderRight: 1,
+                  borderColor: "divider",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <CircularProgress size={24} />
+              </Box>
+            ))}
 
           <Box component="main" sx={{ flexGrow: 1, overflow: "auto", px: 4, pb: 4 }}>
             {!genericReady ? (
@@ -1153,9 +1184,14 @@ export function App() {
                 value={editingGenericId === "new" ? null : genericObjects.find((o) => o.id === editingGenericId) ?? null}
                 onCancel={() => setEditingGenericId(null)}
                 onSaved={(saved) => {
-                  setGenericObjects((prev) => {
-                    const exists = prev.some((o) => o.id === saved.id);
-                    return exists ? prev.map((o) => (o.id === saved.id ? saved : o)) : [...prev, saved];
+                  setGenericCache((prev) => {
+                    const existing = prev[typeName];
+                    if (!existing) return prev;
+                    const exists = existing.objects.some((o) => o.id === saved.id);
+                    const objects = exists
+                      ? existing.objects.map((o) => (o.id === saved.id ? saved : o))
+                      : [...existing.objects, saved];
+                    return { ...prev, [typeName]: { ...existing, objects } };
                   });
                   setEditingGenericId(null);
                   navigate(`/types/${typeName}/${saved.id}`);
