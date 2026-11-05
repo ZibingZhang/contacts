@@ -303,6 +303,21 @@ LIST_SCHEMA = Schema(
     title_field="name",
     fields=[
         Field("name", "Name", "text", required=True),
+        # Structured predicates the frontend's filter builder edits, compiled
+        # client-side into `query` below -- the backend never reads this, it
+        # exists purely so re-opening the builder can restore what was
+        # picked, rather than having to parse the generated SQL back apart.
+        Field(
+            "filter",
+            "Filter",
+            "object",
+            many=True,
+            fields=[
+                Field("field", "Field", "text", required=True),
+                Field("operator", "Operator", "text", required=True),
+                Field("value", "Value", "text"),
+            ],
+        ),
         # Optional: a list with no query is maintained by hand. With one, the
         # refresh action re-runs it and reconciles membership.
         Field("query", "Query", "long_text"),

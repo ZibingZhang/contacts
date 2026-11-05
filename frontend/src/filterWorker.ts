@@ -1,11 +1,11 @@
 /// <reference lib="webworker" />
-import type { Contact } from "./types";
-import type { SelectedFilter } from "./filters";
-import { contactMatchesFilters } from "./filters";
+import type { Contact, SchemaObject } from "./types";
+import type { FilterField, SelectedFilter } from "./filters";
+import { buildFilterCatalog, matchesFilters } from "./filters";
 import { filterContacts } from "./search";
 
 export type FilterWorkerRequest =
-  | { type: "contacts"; contacts: Contact[] }
+  | { type: "contacts"; contacts: Contact[]; schema: SchemaObject }
   | { type: "query"; requestId: number; query: string; filters: SelectedFilter[] };
 
 export interface FilterWorkerResponse {
@@ -21,15 +21,17 @@ export interface FilterWorkerResponse {
 }
 
 let contacts: Contact[] = [];
+let fieldsById = new Map<string, FilterField>();
 
 self.onmessage = (event: MessageEvent<FilterWorkerRequest>) => {
   const message = event.data;
   if (message.type === "contacts") {
     contacts = message.contacts;
+    fieldsById = buildFilterCatalog(message.schema).fieldsById;
     return;
   }
 
-  const matchingFilters = contacts.filter((contact) => contactMatchesFilters(contact, message.filters));
+  const matchingFilters = contacts.filter((contact) => matchesFilters(contact, message.filters, fieldsById));
   const visible = filterContacts(matchingFilters, message.query);
   const response: FilterWorkerResponse = {
     requestId: message.requestId,

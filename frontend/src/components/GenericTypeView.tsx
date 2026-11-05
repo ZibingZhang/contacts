@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useMemo, type ComponentType, type ReactNode } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
@@ -7,8 +7,10 @@ import type { NavigateFunction } from "react-router-dom";
 import type { ListObject, SchemaField, SchemaObject } from "../types";
 import { ListsNav } from "./ListsNav";
 import { TypeObjectList } from "./TypeObjectList";
+import { FilterDropdown } from "./FilterDropdown";
+import { buildFilterCatalog, matchesFilters, type SelectedFilter } from "../filters";
 import { SchemaDetail, type SchemaObjectData } from "../schema-form/SchemaDetail";
-import { SchemaForm, type SavedObject } from "../schema-form/SchemaForm";
+import { SchemaForm, type SavedObject, type FieldRendererProps } from "../schema-form/SchemaForm";
 
 interface GenericTypeViewProps {
   sidebarCollapsed: boolean;
@@ -30,6 +32,9 @@ interface GenericTypeViewProps {
   selectionMode: boolean;
   selectedIds: Set<number>;
   onToggleSelect: (id: number) => void;
+  selectedFilters: SelectedFilter[];
+  onToggleFilter: (filter: SelectedFilter) => void;
+  onClearFilters: () => void;
 
   editingGenericId: number | "new" | null;
   setEditingGenericId: (id: number | "new" | null) => void;
@@ -42,6 +47,7 @@ interface GenericTypeViewProps {
   overlayFields?: (fields: SchemaField[], isEditing: boolean) => SchemaField[];
   extraSections?: (obj: SavedObject) => ReactNode;
   extraActions?: (obj: SavedObject) => ReactNode;
+  fieldRenderers?: Record<string, ComponentType<FieldRendererProps>>;
 }
 
 export function GenericTypeView({
@@ -63,6 +69,9 @@ export function GenericTypeView({
   selectionMode,
   selectedIds,
   onToggleSelect,
+  selectedFilters,
+  onToggleFilter,
+  onClearFilters,
   editingGenericId,
   setEditingGenericId,
   saveGenericObject,
@@ -70,7 +79,15 @@ export function GenericTypeView({
   overlayFields,
   extraSections,
   extraActions,
+  fieldRenderers,
 }: GenericTypeViewProps) {
+  const filterCatalog = useMemo(() => (genericSchema ? buildFilterCatalog(genericSchema) : null), [genericSchema]);
+  const filteredGenericObjects = useMemo(
+    () =>
+      filterCatalog ? scopedGenericObjects.filter((obj) => matchesFilters(obj, selectedFilters, filterCatalog.fieldsById)) : scopedGenericObjects,
+    [scopedGenericObjects, selectedFilters, filterCatalog]
+  );
+
   return (
     <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
       {!sidebarCollapsed && (
@@ -92,12 +109,21 @@ export function GenericTypeView({
         (genericSchema ? (
           <TypeObjectList
             schema={genericSchema}
-            objects={scopedGenericObjects}
+            objects={filteredGenericObjects}
             selectedId={routeId}
             onSelect={(id) => navigate(`/types/${typeName}/${id}`)}
             onSelectAll={() => navigate(`/types/${typeName}`)}
             hideAllRow
             subtitleFor={subtitleFor}
+            headerAction={
+              <FilterDropdown
+                schema={genericSchema}
+                objects={scopedGenericObjects}
+                selectedFilters={selectedFilters}
+                onToggleFilter={onToggleFilter}
+                onClear={onClearFilters}
+              />
+            }
             selectionMode={selectionMode}
             selectedIds={selectedIds}
             onToggleSelect={onToggleSelect}
@@ -138,6 +164,7 @@ export function GenericTypeView({
             schema={genericSchema}
             value={editingGenericId === "new" ? null : genericObjects.find((o) => o.id === editingGenericId) ?? null}
             overlayFields={overlayFields}
+            fieldRenderers={fieldRenderers}
             onCancel={() => setEditingGenericId(null)}
             onSaved={async (saved) => {
               await saveGenericObject(saved);

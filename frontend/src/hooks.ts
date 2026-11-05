@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Contact } from "./types";
+import type { Contact, SchemaObject } from "./types";
 import type { SelectedFilter } from "./filters";
 import type { FilterWorkerRequest, FilterWorkerResponse } from "./filterWorker";
 import { compareByName } from "./search";
@@ -48,7 +48,12 @@ export interface FilteredContacts {
 // unsorted fallback briefly violates it every time `contacts` first
 // populates, which previously just logged a duplicate-key warning but
 // now corrupts the virtualized contact list's cached row offsets.
-export function useFilteredContactIds(contacts: Contact[], query: string, filters: SelectedFilter[]): FilteredContacts {
+export function useFilteredContactIds(
+  contacts: Contact[],
+  query: string,
+  filters: SelectedFilter[],
+  schema: SchemaObject | null
+): FilteredContacts {
   const workerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
   const [result, setResult] = useState<FilteredContacts | null>(null);
@@ -68,15 +73,17 @@ export function useFilteredContactIds(contacts: Contact[], query: string, filter
   }, []);
 
   useEffect(() => {
-    const message: FilterWorkerRequest = { type: "contacts", contacts };
+    if (!schema) return;
+    const message: FilterWorkerRequest = { type: "contacts", contacts, schema };
     workerRef.current?.postMessage(message);
-  }, [contacts]);
+  }, [contacts, schema]);
 
   useEffect(() => {
+    if (!schema) return;
     requestIdRef.current += 1;
     const message: FilterWorkerRequest = { type: "query", requestId: requestIdRef.current, query, filters };
     workerRef.current?.postMessage(message);
-  }, [contacts, query, filters]);
+  }, [contacts, query, filters, schema]);
 
   const fallbackContacts = query.trim() ? contacts : [...contacts].sort(compareByName);
   return result ?? { ids: fallbackContacts.map((contact) => contact.id), query };

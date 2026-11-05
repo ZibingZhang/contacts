@@ -1,10 +1,8 @@
 import { useMemo, useState } from "react";
-import type { Contact } from "../types";
+import type { SchemaObject } from "../types";
 import {
-  FILTER_FIELDS,
-  FILTER_FIELDS_BY_ID,
-  FILTER_MENU,
   NONE_FILTER_VALUE,
+  buildFilterCatalog,
   countAllFilterValues,
   isFilterFieldGroup,
   isNoneFilterValue,
@@ -37,15 +35,11 @@ function filterValueLabel(value: string): string {
   return isNoneFilterValue(value) ? "(None)" : value;
 }
 
-// Maps each group's "None" field id to that group's label, so a selected
-// group-none filter can read as "None" / "Education" rather than the
-// confusing default of "(None)" / "None" (the none-field's own label).
-const GROUP_LABEL_BY_NONE_FIELD_ID = new Map(
-  FILTER_MENU.filter(isFilterFieldGroup).map((group) => [group.noneField.id, group.label]),
-);
-
 interface FilterDropdownProps {
-  contacts: Contact[];
+  schema: SchemaObject;
+  // The unfiltered (but list-scoped) object set to count values against --
+  // same role as `scopedContacts` used to play, generalized to any type.
+  objects: unknown[];
   selectedFilters: SelectedFilter[];
   onToggleFilter: (filter: SelectedFilter) => void;
   onClear: () => void;
@@ -123,20 +117,30 @@ function VirtualValueList({ values, selectedFilters, fieldId, onToggleFilter, em
 // A three-level filter menu: pick a group (Education, Social Profile, …) or
 // standalone field (Tag, City, …), then — for a group — pick one of its
 // fields, then pick one of that field's values. Selections across any
-// combination of fields narrow the contact list together (AND), mirroring
-// the old tag-only facet.
-export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onClear }: FilterDropdownProps) {
+// combination of fields narrow the object list together (AND), mirroring
+// the old contact-only tag facet. Schema-driven via `buildFilterCatalog`, so
+// this works for any object type's schema, not just contacts.
+export function FilterDropdown({ schema, objects, selectedFilters, onToggleFilter, onClear }: FilterDropdownProps) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [openFieldId, setOpenFieldId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [sortAlpha, setSortAlpha] = useState(false);
 
+  const catalog = useMemo(() => buildFilterCatalog(schema), [schema]);
+  // Maps each group's "None" field id to that group's label, so a selected
+  // group-none filter can read as "None" / "Education" rather than the
+  // confusing default of "(None)" / "None" (the none-field's own label).
+  const groupLabelByNoneFieldId = useMemo(
+    () => new Map(catalog.menu.filter(isFilterFieldGroup).map((group) => [group.noneField.id, group.label])),
+    [catalog]
+  );
+
   const isOpen = Boolean(anchorEl);
   const activeGroup: FilterFieldGroup | null = openGroupId
-    ? (FILTER_MENU.find((entry) => entry.id === openGroupId) as FilterFieldGroup | undefined) ?? null
+    ? (catalog.menu.find((entry) => entry.id === openGroupId) as FilterFieldGroup | undefined) ?? null
     : null;
-  const activeField = openFieldId ? FILTER_FIELDS_BY_ID.get(openFieldId) ?? null : null;
+  const activeField = openFieldId ? catalog.fieldsById.get(openFieldId) ?? null : null;
 
   function handleClose() {
     setAnchorEl(null);
@@ -174,9 +178,9 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
   // straight to the field entry; otherwise show the top-level menu as-is.
   const visibleMenuEntries =
     query && !activeGroup
-      ? FILTER_FIELDS.filter((field) => !field.hidden && field.label.toLowerCase().includes(query))
+      ? catalog.fields.filter((field) => !field.hidden && field.label.toLowerCase().includes(query))
       : !activeGroup
-        ? FILTER_MENU
+        ? catalog.menu
         : [];
 
   const visibleGroupFields =
@@ -189,10 +193,10 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
   // if it doesn't match.
   const showGroupNoneOption = Boolean(activeGroup) && (!query || "none".includes(query));
 
-  // Computed once per `contacts` change for every field at once, so opening
-  // a field's value picker is a plain map lookup — no scan over `contacts`
+  // Computed once per `objects` change for every field at once, so opening
+  // a field's value picker is a plain map lookup — no scan over `objects`
   // happens on click.
-  const valuesByField = useMemo(() => countAllFilterValues(contacts), [contacts]);
+  const valuesByField = useMemo(() => countAllFilterValues(objects, catalog.fields), [objects, catalog]);
   const groupNoneCount = activeGroup
     ? valuesByField.get(activeGroup.noneField.id)?.find(({ value }) => isNoneFilterValue(value))?.count ?? 0
     : 0;
@@ -211,8 +215,8 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
       <IconButton
         id="filter-toggle"
         size="small"
-        aria-label="Filter contacts"
-        title="Filter contacts"
+        aria-label={`Filter ${schema.label.plural}`}
+        title={`Filter ${schema.label.plural}`}
         onClick={(event) => setAnchorEl(event.currentTarget)}
       >
         <Badge
@@ -281,8 +285,8 @@ export function FilterDropdown({ contacts, selectedFilters, onToggleFilter, onCl
                       <Checkbox edge="start" checked size="small" disableRipple tabIndex={-1} />
                     </ListItemIcon>
                     <ListItemText
-                      primary={GROUP_LABEL_BY_NONE_FIELD_ID.has(filter.field) ? "None" : filterValueLabel(filter.value)}
-                      secondary={GROUP_LABEL_BY_NONE_FIELD_ID.get(filter.field) ?? FILTER_FIELDS_BY_ID.get(filter.field)?.label}
+                      primary={groupLabelByNoneFieldId.has(filter.field) ? "None" : filterValueLabel(filter.value)}
+                      secondary={groupLabelByNoneFieldId.get(filter.field) ?? catalog.fieldsById.get(filter.field)?.label}
                     />
                   </ListItemButton>
                 ))}

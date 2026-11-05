@@ -156,7 +156,8 @@ export function ContactView({
             getLetter={(obj) => contactLetter(obj as unknown as Contact)}
             headerAction={
               <FilterDropdown
-                contacts={scopedContacts}
+                schema={contactSchema}
+                objects={scopedContacts}
                 selectedFilters={selectedFilters}
                 onToggleFilter={onToggleFilter}
                 onClear={onClearFilters}

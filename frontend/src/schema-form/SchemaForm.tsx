@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import type { SchemaObject } from "../types";
 import { SchemaFieldEdit } from "./SchemaFieldEdit";
 import { setAtPath, type Draft } from "./pathUtils";
@@ -28,9 +28,22 @@ interface SchemaFormProps {
   // Seeds the draft when creating (ignored once `value` is set), without
   // affecting the create-vs-update decision -- used by a "Copy" action.
   initialDraft?: Record<string, unknown>;
+  // A composition-root override swapping in a wholly custom editor for one
+  // field by key, in place of the generic `SchemaFieldEdit` dispatch -- e.g.
+  // List's `filter`, whose builder UI needs to read the draft's live
+  // `member_type` and also write into the sibling `query` field, neither of
+  // which a plain `onChange(newValue)` callback can do. A real component
+  // (not a function returning a node) so it can use hooks of its own.
+  fieldRenderers?: Record<string, ComponentType<FieldRendererProps>>;
 }
 
-export function SchemaForm({ schema, value, onCancel, onSaved, overlayFields, initialDraft }: SchemaFormProps) {
+export interface FieldRendererProps {
+  value: unknown;
+  draft: Draft;
+  setField: (key: string, value: unknown) => void;
+}
+
+export function SchemaForm({ schema, value, onCancel, onSaved, overlayFields, initialDraft, fieldRenderers }: SchemaFormProps) {
   const [draft, setDraft] = useState<Draft>(() => value ?? initialDraft ?? {});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,16 +122,27 @@ export function SchemaForm({ schema, value, onCancel, onSaved, overlayFields, in
         </Alert>
       )}
 
-      {editableFields.map((field) => (
-        <Section key={field.key} title={field.label}>
-          <SchemaFieldEdit
-            field={field}
-            value={draft[field.key]}
-            onChange={(newValue) => updateAtPath([field.key], newValue)}
-            topLevel
-          />
-        </Section>
-      ))}
+      {editableFields.map((field) => {
+        const Renderer = fieldRenderers?.[field.key];
+        return (
+          <Section key={field.key} title={field.label}>
+            {Renderer ? (
+              <Renderer
+                value={draft[field.key]}
+                draft={draft}
+                setField={(key, newValue) => updateAtPath([key], newValue)}
+              />
+            ) : (
+              <SchemaFieldEdit
+                field={field}
+                value={draft[field.key]}
+                onChange={(newValue) => updateAtPath([field.key], newValue)}
+                topLevel
+              />
+            )}
+          </Section>
+        );
+      })}
     </Box>
   );
 }

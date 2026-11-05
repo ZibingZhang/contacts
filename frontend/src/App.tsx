@@ -18,6 +18,7 @@ import { SyncVerificationModal } from "./components/SyncVerificationModal";
 import { SyncReviewModal } from "./components/SyncReviewModal";
 import { AdminConsoleModal } from "./components/AdminConsoleModal";
 import { ListMembersSection } from "./schema-form/ListMembersSection";
+import { ListFilterFieldRenderer } from "./components/ListFilterFieldRenderer";
 import type { SavedObject } from "./schema-form/SchemaForm";
 import { NavigateToObjectContext } from "./schema-form/navigation";
 import Box from "@mui/material/Box";
@@ -25,6 +26,11 @@ import Button from "@mui/material/Button";
 import Alert from "@mui/material/Alert";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "contacts.sidebar.collapsed";
+
+// Stable identity -- ListFilterFieldRenderer doesn't depend on App's state,
+// so this is defined once rather than re-created (and thus remounted,
+// losing its fetched schema) on every render.
+const LIST_FIELD_RENDERERS = { filter: ListFilterFieldRenderer };
 
 function readStoredSidebarCollapsed(): boolean {
   return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
@@ -126,10 +132,15 @@ export function App() {
   const sync = useSyncFlow(setContacts, setTags);
 
   // A selection made while browsing one type shouldn't silently carry over
-  // (and be exportable) after navigating to a different one.
+  // (and be exportable) after navigating to a different one. Filters are
+  // keyed by field id, which is only meaningful within the type that
+  // produced it -- carrying one over to a type without a same-named field
+  // would otherwise match nothing and look like a bug.
   useEffect(() => {
     setSelectionMode(false);
     setSelectedIds(new Set());
+    setSelectedFilters([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeName]);
 
   useEffect(() => {
@@ -207,7 +218,8 @@ export function App() {
   const { ids: visibleContactIds, query: appliedSearchQuery } = useFilteredContactIds(
     scopedContacts,
     debouncedSearchQuery,
-    selectedFilters
+    selectedFilters,
+    contactSchema
   );
   const contactsById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
   const visibleContacts = useMemo(
@@ -510,6 +522,9 @@ export function App() {
           selectionMode={selectionMode}
           selectedIds={selectedIds}
           onToggleSelect={toggleObjectSelection}
+          selectedFilters={selectedFilters}
+          onToggleFilter={toggleFilter}
+          onClearFilters={() => setSelectedFilters([])}
           editingSchemaId={schemaObjectsBrowser.editingSchemaId}
           setEditingSchemaId={schemaObjectsBrowser.setEditingSchemaId}
         />
@@ -533,6 +548,9 @@ export function App() {
           selectionMode={selectionMode}
           selectedIds={selectedIds}
           onToggleSelect={toggleObjectSelection}
+          selectedFilters={selectedFilters}
+          onToggleFilter={toggleFilter}
+          onClearFilters={() => setSelectedFilters([])}
           editingGenericId={typeName === "list" ? editingListId : genericBrowser.editingGenericId}
           setEditingGenericId={typeName === "list" ? setEditingListId : genericBrowser.setEditingGenericId}
           saveGenericObject={typeName === "list" ? (saved) => handleListSaved(saved as unknown as ListObject) : genericBrowser.saveGenericObject}
@@ -542,6 +560,7 @@ export function App() {
               : undefined
           }
           overlayFields={typeName === "list" ? overlayListFields : undefined}
+          fieldRenderers={typeName === "list" ? LIST_FIELD_RENDERERS : undefined}
           extraSections={
             typeName === "list"
               ? (obj) => (
