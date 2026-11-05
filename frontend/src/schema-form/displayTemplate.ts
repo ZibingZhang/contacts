@@ -5,17 +5,34 @@ function resolveOne(field: SchemaField | undefined, raw: unknown): string {
   return field ? resolveFieldDisplayText(field, raw) : raw != null && raw !== "" ? String(raw) : "";
 }
 
-// Resolves one placeholder against an object field's sibling definitions,
-// or a bare `{value: ...}` context for a scalar's own value (used by
-// many-scalar "link" fields, e.g. each item of a list of usernames).
-// "{a|b}" tries `a` first, falling back to `b` if empty.
+// Resolves a (possibly dotted, e.g. "name.first_name") key against nested
+// object fields, descending into each path segment's own sibling
+// definitions and data in turn.
+function resolveKeyPath(path: string, fields: SchemaField[] | undefined, data: Record<string, unknown>): string {
+  const [key, ...rest] = path.split(".");
+  const field = fields?.find((f) => f.key === key);
+  const raw = data[key];
+  if (rest.length === 0) {
+    return resolveOne(field, raw);
+  }
+  if (!field?.fields || raw == null || typeof raw !== "object") {
+    return "";
+  }
+  return resolveKeyPath(rest.join("."), field.fields, raw as Record<string, unknown>);
+}
+
+// Resolves one placeholder against an object field's sibling definitions
+// (dotted paths descend into nested object fields), or a bare
+// `{value: ...}` context for a scalar's own value (used by many-scalar
+// "link" fields, e.g. each item of a list of usernames). "{a|b}" tries `a`
+// first, falling back to `b` if empty.
 function resolvePlaceholder(
   expr: string,
   fields: SchemaField[] | undefined,
   data: Record<string, unknown>
 ): string {
   for (const key of expr.split("|")) {
-    const resolved = key === "value" ? resolveOne(undefined, data.value) : resolveOne(fields?.find((f) => f.key === key), data[key]);
+    const resolved = key === "value" ? resolveOne(undefined, data.value) : resolveKeyPath(key, fields, data);
     if (resolved) return resolved;
   }
   return "";

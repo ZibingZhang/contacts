@@ -1,11 +1,13 @@
 /// <reference lib="webworker" />
-import type { Contact, SchemaObject } from "./types";
+import type { SchemaObject } from "./types";
+import type { SavedObject } from "./schema-form/SchemaForm";
 import type { FilterField, SelectedFilter } from "./filters";
 import { buildFilterCatalog, matchesFilters } from "./filters";
-import { filterContacts } from "./search";
+import { rankAndSort } from "./search";
+import { searchTextOf, sortKeyOf } from "./searchStrategies";
 
 export type FilterWorkerRequest =
-  | { type: "contacts"; contacts: Contact[]; schema: SchemaObject }
+  | { type: "objects"; objects: SavedObject[]; schema: SchemaObject }
   | { type: "query"; requestId: number; query: string; filters: SelectedFilter[] };
 
 export interface FilterWorkerResponse {
@@ -15,27 +17,31 @@ export interface FilterWorkerResponse {
   // can key its "are we grouped/sorted alphabetically" decision off the
   // query that actually produced this result instead of off whatever the
   // input holds *now* — which may already have moved on by the time this
-  // response arrives, breaking the "same-letter contacts are contiguous"
-  // assumption the grouped contact list relies on.
+  // response arrives, breaking the "same-letter objects are contiguous"
+  // assumption the grouped list relies on.
   query: string;
 }
 
-let contacts: Contact[] = [];
+let objects: SavedObject[] = [];
 let fieldsById = new Map<string, FilterField>();
+let textOf: (obj: SavedObject) => string = () => "";
+let sortKey: (obj: SavedObject) => string = () => "";
 
 self.onmessage = (event: MessageEvent<FilterWorkerRequest>) => {
   const message = event.data;
-  if (message.type === "contacts") {
-    contacts = message.contacts;
+  if (message.type === "objects") {
+    objects = message.objects;
     fieldsById = buildFilterCatalog(message.schema).fieldsById;
+    textOf = searchTextOf(message.schema);
+    sortKey = sortKeyOf(message.schema);
     return;
   }
 
-  const matchingFilters = contacts.filter((contact) => matchesFilters(contact, message.filters, fieldsById));
-  const visible = filterContacts(matchingFilters, message.query);
+  const matching = objects.filter((obj) => matchesFilters(obj, message.filters, fieldsById));
+  const visible = rankAndSort(matching, message.query, textOf, sortKey);
   const response: FilterWorkerResponse = {
     requestId: message.requestId,
-    ids: visible.map((contact) => contact.id),
+    ids: visible.map((obj) => obj.id),
     query: message.query,
   };
   self.postMessage(response);

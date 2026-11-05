@@ -1,4 +1,4 @@
-import { useMemo, type ComponentType, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
@@ -8,9 +8,10 @@ import type { ListObject, SchemaField, SchemaObject } from "../types";
 import { ListsNav } from "./ListsNav";
 import { TypeObjectList } from "./TypeObjectList";
 import { FilterDropdown } from "./FilterDropdown";
-import { buildFilterCatalog, matchesFilters, type SelectedFilter } from "../filters";
+import type { SelectedFilter } from "../filters";
 import { SchemaDetail, type SchemaObjectData } from "../schema-form/SchemaDetail";
 import { SchemaForm, type SavedObject, type FieldRendererProps } from "../schema-form/SchemaForm";
+import { useDebouncedValue, useFilteredObjectIds } from "../hooks";
 
 interface GenericTypeViewProps {
   sidebarCollapsed: boolean;
@@ -81,12 +82,29 @@ export function GenericTypeView({
   extraActions,
   fieldRenderers,
 }: GenericTypeViewProps) {
-  const filterCatalog = useMemo(() => (genericSchema ? buildFilterCatalog(genericSchema) : null), [genericSchema]);
-  const filteredGenericObjects = useMemo(
-    () =>
-      filterCatalog ? scopedGenericObjects.filter((obj) => matchesFilters(obj, selectedFilters, filterCatalog.fieldsById)) : scopedGenericObjects,
-    [scopedGenericObjects, selectedFilters, filterCatalog]
+  // Local to this view rather than URL-synced (unlike Contact's `?q=`) --
+  // reset whenever the browsed type or list scope changes, so a search
+  // typed while browsing one type doesn't silently carry over and hide
+  // everything after switching to another (this component instance is
+  // reused across types/scopes, not remounted).
+  const [searchQuery, setSearchQuery] = useState("");
+  useEffect(() => {
+    setSearchQuery("");
+  }, [typeName, scopingListId]);
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 100);
+
+  const { ids: visibleGenericIds, query: appliedSearchQuery } = useFilteredObjectIds<SavedObject>(
+    scopedGenericObjects,
+    debouncedSearchQuery,
+    selectedFilters,
+    genericSchema
   );
+  const genericObjectsById = useMemo(() => new Map(scopedGenericObjects.map((obj) => [obj.id, obj])), [scopedGenericObjects]);
+  const filteredGenericObjects = useMemo(
+    () => visibleGenericIds.flatMap((id) => (genericObjectsById.has(id) ? [genericObjectsById.get(id)!] : [])),
+    [visibleGenericIds, genericObjectsById]
+  );
+  const grouped = !appliedSearchQuery.trim();
 
   return (
     <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
@@ -124,6 +142,7 @@ export function GenericTypeView({
                 onClear={onClearFilters}
               />
             }
+            search={{ query: searchQuery, onQueryChange: setSearchQuery, grouped }}
             selectionMode={selectionMode}
             selectedIds={selectedIds}
             onToggleSelect={onToggleSelect}

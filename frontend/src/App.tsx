@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { fetchTags, updateObjects, ApiError, refreshList } from "./api";
 import type { Contact, ListObject, SchemaField } from "./types";
 import { sameFilter, type SelectedFilter } from "./filters";
-import { useDebouncedValue, useFilteredContactIds } from "./hooks";
+import { useDebouncedValue, useFilteredObjectIds } from "./hooks";
 import { useAppData } from "./useAppData";
 import { useGenericTypeBrowser } from "./useGenericTypeBrowser";
 import { useSchemaObjects } from "./useSchemaObjects";
@@ -215,7 +215,7 @@ export function App() {
   // Debounced so fast typing doesn't kick off a filter pass per keystroke;
   // the actual filtering then runs in a Web Worker, off the main thread.
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 100);
-  const { ids: visibleContactIds, query: appliedSearchQuery } = useFilteredContactIds(
+  const { ids: visibleContactIds, query: appliedSearchQuery } = useFilteredObjectIds<Contact>(
     scopedContacts,
     debouncedSearchQuery,
     selectedFilters,

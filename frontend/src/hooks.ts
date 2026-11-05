@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import type { Contact, SchemaObject } from "./types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { SchemaObject } from "./types";
 import type { SelectedFilter } from "./filters";
 import type { FilterWorkerRequest, FilterWorkerResponse } from "./filterWorker";
-import { compareByName } from "./search";
+import { sortKeyOf } from "./searchStrategies";
+import { rankAndSort } from "./search";
 
 // True when a keyboard event's target is already a place the user types
 // into, so single-key shortcuts know to stay out of its way.
@@ -25,7 +26,7 @@ export function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-export interface FilteredContacts {
+export interface FilteredObjects {
   ids: number[];
   // The query these ids were actually filtered/sorted against. Since the
   // worker replies asynchronously, this can momentarily lag behind the
@@ -36,27 +37,27 @@ export interface FilteredContacts {
   query: string;
 }
 
-// Runs the (potentially expensive, over thousands of contacts) search/filter
+// Runs the (potentially expensive, over thousands of objects) search/filter
 // pass in a Web Worker so it never blocks the main thread or input
 // responsiveness. Falls back to the unfiltered id list (tagged with
 // whatever query was requested) until the worker's first response lands,
 // to avoid a one-frame empty flash. While there's no query, that fallback
 // is still alphabetized (matching what the worker would itself return for
 // an empty query) rather than left in raw/insertion order -- callers that
-// group by letter rely on the "same-letter contacts are contiguous"
-// assumption documented on `FilteredContacts.query` below, and an
-// unsorted fallback briefly violates it every time `contacts` first
+// group by letter rely on the "same-letter objects are contiguous"
+// assumption documented on `FilteredObjects.query` below, and an
+// unsorted fallback briefly violates it every time `objects` first
 // populates, which previously just logged a duplicate-key warning but
-// now corrupts the virtualized contact list's cached row offsets.
-export function useFilteredContactIds(
-  contacts: Contact[],
+// now corrupts the virtualized list's cached row offsets.
+export function useFilteredObjectIds<T extends { id: number }>(
+  objects: T[],
   query: string,
   filters: SelectedFilter[],
   schema: SchemaObject | null
-): FilteredContacts {
+): FilteredObjects {
   const workerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
-  const [result, setResult] = useState<FilteredContacts | null>(null);
+  const [result, setResult] = useState<FilteredObjects | null>(null);
 
   useEffect(() => {
     const worker = new Worker(new URL("./filterWorker.ts", import.meta.url), { type: "module" });
@@ -74,17 +75,18 @@ export function useFilteredContactIds(
 
   useEffect(() => {
     if (!schema) return;
-    const message: FilterWorkerRequest = { type: "contacts", contacts, schema };
+    const message: FilterWorkerRequest = { type: "objects", objects, schema };
     workerRef.current?.postMessage(message);
-  }, [contacts, schema]);
+  }, [objects, schema]);
 
   useEffect(() => {
     if (!schema) return;
     requestIdRef.current += 1;
     const message: FilterWorkerRequest = { type: "query", requestId: requestIdRef.current, query, filters };
     workerRef.current?.postMessage(message);
-  }, [contacts, query, filters, schema]);
+  }, [objects, query, filters, schema]);
 
-  const fallbackContacts = query.trim() ? contacts : [...contacts].sort(compareByName);
-  return result ?? { ids: fallbackContacts.map((contact) => contact.id), query };
+  const sortKey = useMemo(() => (schema ? sortKeyOf<T>(schema) : () => ""), [schema]);
+  const fallbackObjects = query.trim() ? objects : rankAndSort(objects, "", sortKey);
+  return result ?? { ids: fallbackObjects.map((obj) => obj.id), query };
 }

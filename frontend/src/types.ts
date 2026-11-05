@@ -213,6 +213,11 @@ export interface SchemaField {
   // Purely cosmetic, consumed only by schema-form/fieldRows.tsx.
   display?: string;
   display_options?: Record<string, unknown>;
+  // Whether a text search should match against this field's value, beyond
+  // whatever it already matches on an object's display title -- e.g. a
+  // contact's nickname or Chinese name. Purely a hint for search-ranking
+  // text; see contacts/model/schema.py's `Field.searchable`.
+  searchable?: boolean;
   // Frontend-only: a composition-root overlay marking a field read-only in
   // the edit form without hiding it (unlike `managed`, which strips it
   // entirely) -- e.g. a list's member_type once the list exists. Never set
@@ -233,6 +238,10 @@ export interface SchemaObject {
   builtin?: boolean;
   // The key of the top-level field to use as an object's display title.
   title_field?: string;
+  // A template (same `{field}`/`[optional segment]` syntax as a field's
+  // `display: "template"`, dotted paths allowed) to sort/group objects by
+  // when there's no search query. See searchStrategies.ts's `sortKeyOf`.
+  sort_template?: string;
   ctime?: number;
   mtime?: number;
 }

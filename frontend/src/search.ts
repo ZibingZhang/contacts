@@ -1,5 +1,4 @@
 import type { Contact } from "./types";
-import { buildDisplayName } from "./format";
 
 // Folds a string for accent-insensitive matching: NFKD unifies compatibility
 // variants (fullwidth forms, ligatures, etc.) and splits accented letters
@@ -10,17 +9,6 @@ export function normalizeForSearch(text: string): string {
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-}
-
-function contactSearchText(contact: Contact): string {
-  const parts = [buildDisplayName(contact.name)];
-  if (contact.name?.chinese_name) {
-    parts.push(contact.name.chinese_name);
-  }
-  if (contact.name?.maiden_name) {
-    parts.push(contact.name.maiden_name);
-  }
-  return normalizeForSearch(parts.join(" "));
 }
 
 // Score tiers, spaced far enough apart that a higher tier always outranks
@@ -134,53 +122,9 @@ function scoreText(text: string, query: string, tokens: string[]): number | null
   return total;
 }
 
-// Scores a contact against a query, or returns null if any query token fails
-// to match at all (including as a subsequence).
-function scoreContact(contact: Contact, query: string, tokens: string[]): number | null {
-  return scoreText(contactSearchText(contact), query, tokens);
-}
-
-// Alphabetical fallback ordering: first name, then last name, case-insensitive.
-export function compareByName(a: Contact, b: Contact): number {
-  const firstA = (a.name?.first_name ?? "").toLowerCase();
-  const firstB = (b.name?.first_name ?? "").toLowerCase();
-  if (firstA !== firstB) {
-    return firstA < firstB ? -1 : 1;
-  }
-  const lastA = (a.name?.last_name ?? "").toLowerCase();
-  const lastB = (b.name?.last_name ?? "").toLowerCase();
-  if (lastA !== lastB) {
-    return lastA < lastB ? -1 : 1;
-  }
-  return 0;
-}
-
-// Ranks contacts by how well they match the query, using subsequence
-// matching so every token just needs its letters in order somewhere in the
-// contact's name text; order-independent across tokens so "wong audrey" and
-// "audrey wong" both match. Exact and word-boundary matches are scored above
-// loose subsequence matches, and non-matching contacts are filtered out.
-export function filterContacts(contacts: Contact[], query: string): Contact[] {
-  const normalizedQuery = normalizeForSearch(query.trim());
-  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
-  if (!tokens.length) {
-    return [...contacts].sort(compareByName);
-  }
-
-  const scored: { contact: Contact; score: number }[] = [];
-  for (const contact of contacts) {
-    const score = scoreContact(contact, normalizedQuery, tokens);
-    if (score !== null) {
-      scored.push({ contact, score });
-    }
-  }
-  scored.sort((a, b) => b.score - a.score || compareByName(a.contact, b.contact));
-  return scored.map((entry) => entry.contact);
-}
-
 // Filters and ranks arbitrary items by the same tiered subsequence matching
-// as `filterContacts`, via a caller-supplied `textOf` -- used for the
-// generic (non-contact) object sidebars, where "name" is whatever the
+// as `rankAndSort`, via a caller-supplied `textOf` -- used for the
+// (non-controlled-search) object sidebars, where "name" is whatever the
 // schema's display label resolves to rather than a fixed field.
 export function filterByRelevance<T>(items: T[], query: string, textOf: (item: T) => string): T[] {
   const normalizedQuery = normalizeForSearch(query.trim());
@@ -201,8 +145,28 @@ export function filterByRelevance<T>(items: T[], query: string, textOf: (item: T
   return scored.map((entry) => entry.item);
 }
 
+// Filters and ranks `items` by relevance to `query`, same as
+// `filterByRelevance`, but alphabetizes by `sortKeyOf` (defaulting to
+// `textOf`) instead of leaving them in input order when there's no query to
+// rank against -- for callers (the filter worker, its fallback hook) that
+// need a stable, groupable order even with an empty search box. Taking a
+// separate `sortKeyOf` lets a caller rank against one text (e.g. every
+// searchable field) while alphabetizing by another (e.g. a display title)
+// when the two shouldn't be the same.
+export function rankAndSort<T>(
+  items: T[],
+  query: string,
+  textOf: (item: T) => string,
+  sortKeyOf: (item: T) => string = textOf
+): T[] {
+  if (!query.trim()) {
+    return [...items].sort((a, b) => normalizeForSearch(sortKeyOf(a)).localeCompare(normalizeForSearch(sortKeyOf(b))));
+  }
+  return filterByRelevance(items, query, textOf);
+}
+
 // Filters and ranks a plain list of strings (e.g. autocomplete options) by
-// the same tiered subsequence matching as `filterContacts`, so a query's
+// the same tiered subsequence matching as `rankAndSort`, so a query's
 // letters just need to appear in order somewhere in the option.
 export function filterBySubsequence(options: string[], query: string): string[] {
   const normalizedQuery = normalizeForSearch(query.trim());
@@ -229,9 +193,9 @@ export function letterOf(text: string): string {
   return /[A-Z]/.test(ch) ? ch : "#";
 }
 
-// The letter a contact is grouped/indexed under, matching the field
-// `compareByName` sorts on first so that same-letter contacts stay
-// contiguous.
+// The letter a contact is grouped/indexed under, matching the field the
+// contact search strategy leads with (first name, then last) so
+// same-letter contacts stay contiguous.
 export function contactLetter(contact: Contact): string {
   const first = contact.name?.first_name ?? "";
   const last = contact.name?.last_name ?? "";

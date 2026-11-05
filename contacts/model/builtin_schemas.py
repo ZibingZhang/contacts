@@ -68,6 +68,10 @@ CONTACT_SCHEMA = Schema(
     label={"singular": "Contact", "plural": "Contacts"},
     builtin=True,
     title_field="name",
+    # Leads with first/last name rather than the title's field order (which
+    # has `prefix` before `first_name`, see below) so a contact with a
+    # prefix set (e.g. "Dr.") still groups/sorts under their first name.
+    sort_template="{name.first_name} {name.last_name}",
     fields=[
         Field(
             "name",
@@ -75,15 +79,15 @@ CONTACT_SCHEMA = Schema(
             "object",
             required=True,
             fields=[
-                Field("prefix", "Prefix", "text"),
-                Field("first_name", "First name", "text"),
-                Field("nickname", "Nickname", "text"),
-                Field("deadname", "Deadname", "text"),
-                Field("maiden_name", "Maiden name", "text"),
-                Field("middle_name", "Middle name", "text"),
-                Field("last_name", "Last name", "text"),
-                Field("suffix", "Suffix", "text"),
-                Field("chinese_name", "Chinese name", "text"),
+                Field("prefix", "Prefix", "text", searchable=True),
+                Field("first_name", "First name", "text", searchable=True),
+                Field("nickname", "Nickname", "text", searchable=True),
+                Field("deadname", "Deadname", "text", searchable=True),
+                Field("maiden_name", "Maiden name", "text", searchable=True),
+                Field("middle_name", "Middle name", "text", searchable=True),
+                Field("last_name", "Last name", "text", searchable=True),
+                Field("suffix", "Suffix", "text", searchable=True),
+                Field("chinese_name", "Chinese name", "text", searchable=True),
             ],
         ),
         Field("birthday", "Birthday", "date"),

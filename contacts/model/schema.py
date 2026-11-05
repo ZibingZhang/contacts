@@ -104,10 +104,11 @@ _FIELD_ATTRIBUTES = frozenset(
         "order_by",
         "display",
         "display_options",
+        "searchable",
     }
 )
 
-_SCHEMA_ATTRIBUTES = frozenset({"name", "label", "fields", "builtin", "title_field"})
+_SCHEMA_ATTRIBUTES = frozenset({"name", "label", "fields", "builtin", "title_field", "sort_template"})
 
 
 @dataclasses.dataclass
@@ -137,6 +138,10 @@ class Field:
             `DISPLAY_KINDS`. Purely cosmetic -- never consulted here.
         display_options: Parameters for `display`, shaped per kind (e.g. a
             `link`'s `href_template`). Opaque to this module.
+        searchable: Whether a client's text search should match against
+            this field's value, in addition to whatever it already matches
+            on an object's display title. Never consulted here -- purely a
+            hint for the frontend's search-ranking text.
     """
 
     key: str
@@ -154,6 +159,7 @@ class Field:
     order_by: str | None = None
     display: str | None = None
     display_options: dict | None = None
+    searchable: bool = False
 
     def to_dict(self) -> dict:
         """Serialize the field, omitting anything left at its default.
@@ -191,6 +197,8 @@ class Field:
             data["display"] = self.display
         if self.display_options is not None:
             data["display_options"] = dict(self.display_options)
+        if self.searchable:
+            data["searchable"] = True
 
         return data
 
@@ -236,6 +244,13 @@ class Schema:
         title_field: The key of the top-level field a client should use as
             an object's display title, e.g. "name". Optional -- a client is
             expected to fall back to some heuristic of its own when absent.
+        sort_template: A template string (same `{field}`/`[optional segment]`
+            syntax as a field's `display: "template"`, dotted paths allowed,
+            e.g. "{name.first_name} {name.last_name}") a client should
+            render and sort/group objects by when no search query is active.
+            Optional -- a client is expected to fall back to its own title
+            heuristic when absent. Purely a hint for the frontend -- never
+            consulted here.
     """
 
     name: str
@@ -243,6 +258,7 @@ class Schema:
     fields: list[Field]
     builtin: bool = False
     title_field: str | None = None
+    sort_template: str | None = None
 
     def to_dict(self) -> Object:
         """Serialize the schema.
@@ -259,6 +275,8 @@ class Schema:
             data["builtin"] = True
         if self.title_field is not None:
             data["title_field"] = self.title_field
+        if self.sort_template is not None:
+            data["sort_template"] = self.sort_template
         return data
 
     def field(self, key: str) -> Field | None:
@@ -300,7 +318,7 @@ def _parse_field(data: Any, path: str) -> Field:
             f"{field_path}: field type must be one of {', '.join(FIELD_TYPES)}"
         )
 
-    for flag in ("many", "required", "managed", "unique"):
+    for flag in ("many", "required", "managed", "unique", "searchable"):
         if flag in data and not isinstance(data[flag], bool):
             raise SchemaError(f"{field_path}: {flag} must be a boolean")
 
@@ -382,6 +400,7 @@ def _parse_field(data: Any, path: str) -> Field:
         order_by=order_by,
         display=display,
         display_options=display_options,
+        searchable=bool(data.get("searchable", False)),
     )
 
 
@@ -472,12 +491,20 @@ def validate_schema(data: Any) -> Schema:
                 f"{name}: title_field {title_field!r} is not one of its fields"
             )
 
+    # Not validated against `fields` beyond being a string -- like a field's
+    # own `display_options.template`, its placeholders (including dotted
+    # paths into nested fields) are opaque here and resolved client-side.
+    sort_template = data.get("sort_template")
+    if sort_template is not None and not isinstance(sort_template, str):
+        raise SchemaError(f"{name}: sort_template must be a string")
+
     return Schema(
         name=name,
         label=label,
         fields=fields,
         builtin=builtin,
         title_field=title_field,
+        sort_template=sort_template,
     )
 
 
